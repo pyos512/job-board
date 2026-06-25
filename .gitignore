@@ -1,0 +1,22 @@
+# 비밀: 앱 비밀번호 등 절대 커밋 금지
+email_config.json
+*.local.json
+
+# 파이썬 가상환경 / 캐시
+.venv/
+__pycache__/
+*.pyc
+
+# 메일 미리보기 산출물
+digest_preview.html
+
+# 평문 데이터는 배포 금지(암호문 jobs.enc.json 만 배포). 워크플로는 -f 로 enc 강제 커밋.
+data/jobs.json
+data/jobs.js
+
+# 로컬 검증용 임시 사이트
+_site_test/
+
+# 로그
+logs/
+*.log

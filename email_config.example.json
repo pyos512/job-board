@@ -1,0 +1,8 @@
+{
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "user": "pyo950512@gmail.com",
+  "password": "여기에-16자-앱비밀번호-공백없이",
+  "to": "pyo950512@gmail.com",
+  "from_name": "채용보드 봇"
+}

@@ -1,0 +1,5 @@
+# https://securitytxt.org/
+# 공개 배포 시 연락처/만료일을 본인 정보로 수정하세요.
+Contact: mailto:pyo950512@gmail.com
+Expires: 2027-06-25T00:00:00.000Z
+Preferred-Languages: ko, en

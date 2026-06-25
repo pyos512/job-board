@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "jobboard",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-File", "tools/serve.ps1", "8123"],
+      "port": 8123
+    },
+    {
+      "name": "secure-test",
+      "runtimeExecutable": "C:/Users/pyo90/OneDrive/claude/job-board/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "8124", "--directory", "C:/Users/pyo90/OneDrive/claude/job-board/_site_test"],
+      "port": 8124
+    }
+  ]
+}
