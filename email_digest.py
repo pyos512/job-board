@@ -35,16 +35,21 @@ def load_config():
                 cfg = json.load(f)
         except Exception as e:
             print(f"[경고] email_config.json 읽기 실패: {e}")
-    # 환경변수가 있으면 우선
+    # 환경변수가 있으면 우선. 단, 빈 문자열(미설정 secret)은 '없음'으로 보고 기본값 사용.
+    def env_or(key, default):
+        v = os.environ.get(key, "")
+        return v if v != "" else default
+
+    user = env_or("GMAIL_USER", cfg.get("user", ""))
     out = {
-        "smtp_host": os.environ.get("SMTP_HOST", cfg.get("smtp_host", "smtp.gmail.com")),
-        "smtp_port": int(os.environ.get("SMTP_PORT", cfg.get("smtp_port", 587))),
-        "user":      os.environ.get("GMAIL_USER", cfg.get("user", "")),
+        "smtp_host": env_or("SMTP_HOST", cfg.get("smtp_host", "smtp.gmail.com")),
+        "smtp_port": int(env_or("SMTP_PORT", cfg.get("smtp_port", 587))),
+        "user":      user,
         # 앱 비밀번호는 화면에 4자리씩 공백으로 표시되므로 공백 제거
-        "password":  os.environ.get("GMAIL_APP_PASSWORD", cfg.get("password", "")).replace(" ", ""),
-        "to":        os.environ.get("MAIL_TO", cfg.get("to", "")) or cfg.get("user", ""),
+        "password":  env_or("GMAIL_APP_PASSWORD", cfg.get("password", "")).replace(" ", ""),
+        "to":        env_or("MAIL_TO", cfg.get("to", "")) or user,
         "from_name": cfg.get("from_name", "채용보드 봇"),
-        "site_url":  os.environ.get("SITE_URL", cfg.get("site_url", "")),
+        "site_url":  env_or("SITE_URL", cfg.get("site_url", "")),
     }
     return out
 
