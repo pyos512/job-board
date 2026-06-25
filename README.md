@@ -131,9 +131,20 @@ job-board/
 - **CSP `default-src 'self'`** — 외부 CDN 0개(Three.js 자체 호스팅)라 `script-src 'self'`로 가장 엄격.
 - **보안 헤더** — `nosniff`·`X-Frame-Options: DENY`·`Referrer-Policy: no-referrer`·`Permissions-Policy`·`HSTS`·COOP/CORP. (`deploy/` 및 `tools/serve.ps1`)
 
-### 공개 배포 (택1)
+### 🔐 비공개 배포 (GitHub Pages + 매일 비밀번호) — 현재 구성
+"링크 하나로 어디서든 보되, 나만 접속"을 위해 **데이터를 매일 새 비밀번호로 암호화**합니다.
+
+- **암호화**: `build_secure.py` 가 `jobs.json` → `data/jobs.enc.json`(AES-256-GCM, PBKDF2-SHA256 200k). 배포본엔 **암호문만** 올라가고 평문 `jobs.json`/`jobs.js`는 `.gitignore`로 제외.
+- **게이트**: `assets/gate.js` 가 비밀번호 입력 → 브라우저 Web Crypto로 복호화 후 렌더. 틀리면 안 열림.
+- **자동화**: `.github/workflows/update.yml` 이 매일 08시(KST) **수집 → 암호화 → 커밋(=Pages 배포) → 링크+오늘의 비밀번호 메일**. PC가 꺼져 있어도 클라우드에서 실행.
+- **메일**: `email_digest.py --link` (링크 + 그날의 비밀번호). 전체 다이제스트는 인자 없이 `email_digest.py`.
+- **필요 Secrets**(저장소 Settings → Secrets → Actions): `GMAIL_USER` `GMAIL_APP_PASSWORD` `MAIL_TO` `SITE_URL` (선택 `SMTP_HOST`/`SMTP_PORT`/`WORKNET_KEY`).
+- **첫 비밀번호**: 저장소 Actions 탭에서 워크플로를 수동 실행(`Run workflow`)하면 그 즉시 메일로 발송됨.
+
+> 보안 근거: 비밀번호는 4자리×4그룹(혼동문자 제외) 무작위 + PBKDF2 200k → 공개 저장소의 암호문이라도 브루트포스 비현실적.
+
+### 그 외 공개 배포 (택1)
 - **Netlify / Cloudflare Pages**: 폴더 그대로 배포 + `deploy/_headers`(또는 `netlify.toml`)를 루트로.
-- **GitHub Pages + Actions**: 푸시하면 `.github/workflows/update.yml`이 매일 Python으로 데이터 갱신·커밋.
 - **자체 nginx**: `deploy/nginx-security.conf`를 `server {}`에 포함.
 
 ---
