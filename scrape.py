@@ -26,6 +26,21 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 UA_M = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"}
 TIMEOUT = 40
 
+
+def GET(url, retries=3, backoff=3, **kw):
+    """타임아웃/일시 오류에 재시도. 해외(GitHub Actions) IP에서 한국 사이트가 간헐적으로
+    느리거나 막히는 경우를 완화한다."""
+    kw.setdefault("timeout", TIMEOUT)
+    last = None
+    for i in range(retries):
+        try:
+            return requests.get(url, **kw)
+        except Exception as ex:
+            last = ex
+            if i < retries - 1:
+                time.sleep(backoff * (i + 1))
+    raise last
+
 # ----------------------------------------------------------------------------
 # 자연과학/이공계 전공 필터 (기상·대기·환경·데이터·AI 등으로 정밀 축소)
 #  - 한글 키워드(STEM_KO): 자연과학·공학 전공/분야어
@@ -137,7 +152,7 @@ def get_alio():
     url = ("https://job.alio.go.kr/recruit.do?pageSet=100&order=TERM_END&sort=ASC"
            "&ing=2&area=R8015&area=R8019&education=R7060")
     print("[잡알리오] 목록 수집...")
-    r = requests.get(url, headers=UA, timeout=TIMEOUT); r.encoding = "utf-8"
+    r = GET(url, headers=UA); r.encoding = "utf-8"
     soup = BeautifulSoup(r.text, "html.parser")
     rows = []
     for tb in soup.select("table.tbl.type_03 tbody tr"):
@@ -355,12 +370,27 @@ def get_narailteo():
 # ----------------------------------------------------------------------------
 # 실행
 # ----------------------------------------------------------------------------
+def _safe(fn, name):
+    """한 소스가 실패(타임아웃·차단 등)해도 전체 수집을 멈추지 않는다."""
+    try:
+        return fn()
+    except Exception as ex:
+        print(f"[{name}] 실패(건너뜀): {ex}")
+        return []
+
+
 def main():
     allj = []
-    allj += get_alio()
-    allj += get_hibrain()
-    allj += get_worknet()
-    allj += get_narailteo()
+    allj += _safe(get_alio, "잡알리오")
+    allj += _safe(get_hibrain, "하이브레인넷")
+    allj += _safe(get_worknet, "워크넷")
+    allj += _safe(get_narailteo, "나라일터")
+
+    # 모든 소스가 실패해 0건이면 기존 데이터를 덮어쓰지 않고 실패 종료
+    # (빈 보드 배포 방지 → 직전 배포·데이터 유지)
+    if not allj:
+        print("\n⚠️ 수집 0건 — 모든 소스 실패로 판단. 기존 데이터를 유지하고 종료합니다.")
+        sys.exit(1)
 
     # 정렬: 점수↓, 마감 정보 있는 것 우선
     allj.sort(key=lambda j: (-j["score"], j["endDate"] or "9"))
