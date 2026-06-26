@@ -42,31 +42,39 @@ def GET(url, retries=3, backoff=3, **kw):
     raise last
 
 # ----------------------------------------------------------------------------
-# 자연과학/이공계 전공 필터 (기상·대기·환경·데이터·AI 등으로 정밀 축소)
-#  - 한글 키워드(STEM_KO): 자연과학·공학 전공/분야어
-#  - 영문 약어(STEM_EN): 단어경계 + 대소문자 구분 → "email/main"의 ai/it 오탐 차단
-#  - 일반 행정어로 오인되기 쉬운 단어(안전·보건·정보)는 구체형으로만 인정
+# 전공 필터 — 사용자 전공/관심분야로 한정
+#   기상학 · 대기환경 · 환경 · 농림기상 · 해양기상 · 데이터분석 · AI · 환경컨설팅 · 대기측정
+#   (그 외 일반 이공계 — 전기전자·기계·화학·바이오·의료·토목 등 — 은 제외)
 # ----------------------------------------------------------------------------
-STEM_KO = re.compile(
-    r"기상|대기환경|대기질|대기오염|대기과학|기후변화|기후|온실가스|탄소중립|탄소배출|미세먼지|오존|"
-    r"환경|생태|생물다양성|수질|수자원|상하수도|하수|폐기물|자원순환|재활용|악취|토양|수문|"
-    r"해양|수산|어업|양식|지질|지구과학|천문|우주|위성|원격탐사|"
-    r"농업|농학|원예|임학|산림|축산|수의|식품|발효|종자|"
-    r"화학|화공|소재|신소재|재료|금속|섬유|고분자|촉매|분광|반도체|디스플레이|배터리|"
-    r"전기|전자|제어|계측|기계|로봇|자동차|항공|조선|에너지|신재생|태양광|풍력|수소|원자력|핵융합|전력|"
-    r"물리|광학|레이저|음향|"
-    r"생물|생명|바이오|유전체|유전|미생물|면역|세포|단백질|신경과학|뇌과학|"
-    r"의생명|의료|보건의료|보건환경|공중보건|약학|간호|방사선|영상의학|진단|병리|역학|"
-    r"데이터|빅데이터|통계|머신러닝|딥러닝|인공지능|알고리즘|"
-    r"정보통신|정보보호|정보보안|사이버보안|소프트웨어|네트워크|클라우드|블록체인|컴퓨터공학|"
-    r"토목|건설|건축|구조공학|지반|도시계획|교통공학|교통계획|교통정책|도로교통|방재|재난|산업안전|"
-    r"공간정보|측량|수치모델|수치해석|모델링|시뮬레이션|시험분석|성분분석|실험|계량|"
-    r"공학|이학|자연과학|과학기술|나노|디지털트윈"
+FIELD_KO = re.compile(
+    # 기상·기후
+    r"기상|기후|기후변화|기상관측|수치예보|기상예보|기상청|기상학|"
+    # 대기·대기환경·대기측정·대기오염
+    r"대기|대기환경|대기질|대기오염|대기과학|대기측정|대기관측|미세먼지|초미세먼지|오존|"
+    r"온실가스|탄소중립|탄소배출|배출가스|매연|악취|냄새|"
+    # 환경 일반·환경컨설팅·환경측정·환경모니터링
+    r"환경|환경공학|환경과학|환경영향|환경영향평가|환경평가|환경컨설팅|환경모니터링|환경측정|"
+    r"환경관리|환경보전|환경정책|환경분석|수질|생태|"
+    # 농림기상·해양기상
+    r"농림기상|농업기상|해양기상|해양관측|해양환경|해양기후|해양대기|"
+    # 데이터분석·통계·AI
+    r"데이터|빅데이터|데이터분석|데이터사이언스|데이터엔지니어|통계분석|통계|"
+    r"인공지능|머신러닝|딥러닝|기계학습|"
+    # 측정·관측·모니터링·원격탐사·수치모델
+    r"오염측정|측정분석|환경측정|대기측정|모니터링|관측|원격탐사|위성영상|수치모델|대기모델|확산모델"
 )
-STEM_EN = re.compile(r"\b(AI|ML|DL|IT|ICT|IoT|GIS|RS|R&?D|ESG|GHG|LCA|BIM|CFD|HVAC|EV|GHGs)\b")
-def is_science(*texts) -> bool:
+FIELD_EN = re.compile(r"\b(AI|ML|DL|ESG|GHG|GHGs|LCA|GIS|RS|AQI|AQ|PM2\.?5|PM10|CEMS|TMS)\b")
+# '환경'이 들어가도 기술직이 아닌 공고(미화·정비·경비 등)는 제외
+NEG = re.compile(r"환경미화|미화원|환경정비|환경공무직|환경순찰|조경관리|시설관리|경비원|미화|방역|소독")
+
+def is_field(*texts) -> bool:
     blob = " ".join(t for t in texts if t)
-    return bool(STEM_KO.search(blob) or STEM_EN.search(blob))
+    if NEG.search(blob):
+        return False
+    return bool(FIELD_KO.search(blob) or FIELD_EN.search(blob))
+
+# 구버전 호출 호환
+is_science = is_field
 
 # ----------------------------------------------------------------------------
 # 공통 유틸
@@ -77,6 +85,14 @@ def clean(s: str) -> str:
     s = re.sub(r"<[^>]+>", " ", s)
     s = html.unescape(s)
     return re.sub(r"\s+", " ", s).strip()
+
+def to_yymmdd(s: str) -> str:
+    """'2026-07-03' / '20260703' / '26.07.03' → '26.07.03' (프론트 D-day 계산용)."""
+    m = re.search(r"(20\d{2}|\d{2})[-.]?(\d{2})[-.]?(\d{2})", s or "")
+    if not m:
+        return ""
+    y = m.group(1)
+    return f"{y[2:] if len(y)==4 else y}.{m.group(2)}.{m.group(3)}"
 
 def fmt_qualifications(raw: str) -> str:
     """응시자격 텍스트를 항목 단위로 줄바꿈 정리(가독성)."""
@@ -129,28 +145,28 @@ def classify(org: str) -> str:
 def score(emp, salary, pref, career, jtype, sci_strong=False):
     s, reasons = 0, []
     e = emp or ""
-    if re.search(r"무기계약", e):           s += 34; reasons.append("무기계약직(고용안정)")
-    elif re.search(r"비정규", e):            s += 10; reasons.append("계약직")
-    elif re.search(r"청년인턴\(채용형\)", e): s += 18; reasons.append("채용형 인턴")
-    elif re.search(r"청년인턴", e):          s += 4;  reasons.append("체험형 인턴")
-    elif re.search(r"계약직", e):            s += 10; reasons.append("계약직")
+    # 고용형태 (채용형 인턴 항목 삭제 / 계약직 하향)
+    if re.search(r"무기계약", e):            s += 34; reasons.append("무기계약직(고용안정)")
+    elif re.search(r"비정규|계약직", e):      s += 5;  reasons.append("계약직")
+    elif re.search(r"인턴", e):              s += 3;  reasons.append("인턴")
     elif re.search(r"정규직", e):            s += 50; reasons.append("정규직(정년보장)")
     if salary and re.search(r"\d", salary):  s += 12; reasons.append("연봉 공개")
     if career and re.search(r"신입", career):s += 6;  reasons.append("신입 지원가능")
     if jtype and "정부출연" in jtype:        s += 8;  reasons.append("정부출연연")
     if jtype == "지자체·지방연구원":          s += 5;  reasons.append("지자체 연구원")
-    if sci_strong:                           s += 5;  reasons.append("이공계 전문분야")
+    if sci_strong:                           s += 5;  reasons.append("전문분야 적합")
     if pref:                                 s += 4
     return s, reasons
 
-RECO_CUTOFF = 48  # ⭐추천 기준
+RECO_CUTOFF = 40  # ⭐추천 기준 (계약직 하향 등 가중치 조정에 맞춰 낮춤)
 
 # ----------------------------------------------------------------------------
 # 1) 잡알리오
 # ----------------------------------------------------------------------------
 def get_alio():
-    url = ("https://job.alio.go.kr/recruit.do?pageSet=100&order=TERM_END&sort=ASC"
-           "&ing=2&area=R8015&area=R8019&education=R7060")
+    # 학력 필터 제거 → 학사·석사 포함(박사 전용은 아래 코드에서 제외). pageSet 확대.
+    url = ("https://job.alio.go.kr/recruit.do?pageSet=200&order=TERM_END&sort=ASC"
+           "&ing=2&area=R8015&area=R8019")
     print("[잡알리오] 목록 수집...")
     r = GET(url, headers=UA); r.encoding = "utf-8"
     soup = BeautifulSoup(r.text, "html.parser")
@@ -175,7 +191,7 @@ def get_alio():
 
     jobs = []
     per_company = {}
-    MAX_PER_COMPANY = 3
+    MAX_PER_COMPANY = 4
     for i, rr in enumerate(rows, 1):
         if per_company.get(rr["org"], 0) >= MAX_PER_COMPANY:   # 한 기관 과다 노출 방지
             continue
@@ -219,14 +235,14 @@ def get_alio():
         except Exception as ex:
             print(f"   (상세 실패 {rr['org']}: {ex})")
 
-        if edu and ("박사" in edu) and ("석사" not in edu):   # 박사 전용 제외
+        if "박사" in edu and not ("석사" in edu or "학사" in edu):   # 박사 전용 제외(학사·석사는 유지)
             continue
-        if not is_science(rr["title"], field, edu, elig, pref, rr["org"]):  # 이공계만
+        if not is_field(rr["title"], field, edu, elig, pref, rr["org"]):  # 내 전공 분야만
             continue
         if not period:
             period = f"{rr['reg']} ~ {rr['end']}"
         jtype = classify(rr["org"])
-        sci_strong = len(set(STEM_KO.findall(" ".join([rr["title"], field, elig])))) >= 3
+        sci_strong = len(set(FIELD_KO.findall(" ".join([rr["title"], field, elig])))) >= 3
         sc, rs = score(rr["emp"], sal, pref, career, jtype, sci_strong)
         jobs.append(dict(source="잡알리오", type=jtype, org=rr["org"], title=rr["title"],
                          location=rr["loc"], emp=rr["emp"], period=period, endDate=rr["end"],
@@ -278,9 +294,9 @@ def get_hibrain_cat(url, label):
         sc, rs = score("연구직", "", "", "", jtype)
         out.append(dict(source="하이브레인넷", type=jtype, org=org, title=title,
                         location="", emp="연구직", period="", endDate="", dday=(dd.group(1) if dd else ""),
-                        salary="", edu="석사 이상", field="연구", career="", headcount="",
+                        salary="", edu="학사·석사", field="연구", career="", headcount="",
                         elig="", pref="", score=sc + 12, reasons=rs + ["연구전문 채용"], url=href))
-        if len(out) >= 14:
+        if len(out) >= 20:
             break
     return out
 
@@ -299,7 +315,70 @@ def get_hibrain():
     return uniq
 
 # ----------------------------------------------------------------------------
-# 3) 워크넷 (공공데이터포털 공식 API, 선택) — 환경변수 WORKNET_KEY 필요
+# 3) 고용24 (work24.go.kr 공식 OpenAPI, 선택) — 환경변수 WORK24_KEY 필요
+#    엔드포인트: callOpenApiSvcInfo210L01.do (채용정보 목록), XML 응답
+#    authKey 발급: work24.go.kr → 고객센터 → OPEN-API → 회원가입 후 인증키 신청(무료)
+#    ※ 키 받은 뒤 실제 XML 태그명에 맞춰 미세조정 필요할 수 있음(아래 g()가 여러 후보 태그를 시도).
+# ----------------------------------------------------------------------------
+WORK24_KEYWORDS = ["기상", "대기환경", "대기오염", "미세먼지", "환경", "환경컨설팅",
+                   "해양기상", "농림기상", "데이터분석", "인공지능", "대기측정"]
+
+def get_work24():
+    key = os.environ.get("WORK24_KEY", "").strip()
+    if not key:
+        print("[고용24] WORK24_KEY 미설정 → 건너뜀 (README 참조)")
+        return []
+    import xml.etree.ElementTree as ET
+    base = "https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo210L01.do"
+    out, seen = [], set()
+    for kw in WORK24_KEYWORDS:
+        try:
+            params = dict(authKey=key, callTp="L", returnType="XML",
+                          startPage=1, display=100, keyword=kw)
+            r = GET(base, headers=UA, params=params)
+            root = ET.fromstring(r.text)
+        except Exception as ex:
+            print(f"[고용24] '{kw}' 실패: {ex}")
+            continue
+        # 응답 래퍼/항목 태그명이 버전마다 달라 'wanted'류를 폭넓게 순회
+        items = [el for el in root.iter() if el.tag.lower() in ("wanted", "empinfo", "item", "dhsopenempinfo")]
+        for w in items:
+            def g(*tags):
+                for t in tags:
+                    e = w.find(t)
+                    if e is not None and e.text and e.text.strip():
+                        return clean(e.text)
+                return ""
+            no = g("empWantedHoNo", "wantedAuthNo", "empSeqno", "empWantedAuthNo")
+            title = g("title", "empWantedTitle", "wantedTitle", "empBusiNm")
+            org = g("company", "empBusiNm", "coNm", "corpNm")
+            if not title or (no and no in seen):
+                continue
+            if no:
+                seen.add(no)
+            edu = g("eduNm", "empWantedEduNm", "education", "academicNm") or "학력무관"
+            if "박사" in edu and not ("석사" in edu or "학사" in edu):
+                continue
+            if not is_field(title, org):
+                continue
+            region = g("region", "workRegion", "empWantedRegion", "workRgnNm")
+            emp = g("empWantedTypeNm", "empTpNm", "hireType", "empWantedTypeCdNm")
+            sal = g("sal", "salTpNm", "salary", "salNm")
+            close = to_yymmdd(g("closeDt", "empWantedEndt", "reqEndDt", "empWantedEndDt"))
+            url = g("wantedInfoUrl", "empWantedUrl", "srcUrl") or \
+                  (f"https://www.work24.go.kr/wk/a/b/1500/empDetailAuthView.do?wantedAuthNo={no}" if no else "https://www.work24.go.kr")
+            jtype = classify(org or title)
+            sc, rs = score(emp, sal, "", "", jtype)
+            out.append(dict(source="고용24", type=jtype, org=org or "고용24 공고", title=title,
+                            location=region, emp=emp or "", period="", endDate=close, dday="",
+                            salary=(sal if re.search(r"\d", sal) else ""), edu=edu, field="",
+                            career="", headcount="", elig="", pref="", score=sc, reasons=rs, url=url))
+        time.sleep(0.4)
+    print(f"[고용24] {len(out)}건")
+    return out
+
+# ----------------------------------------------------------------------------
+# 4) 워크넷 (공공데이터포털 공식 API, 선택) — 환경변수 WORKNET_KEY 필요
 #    키 발급: https://www.data.go.kr  '한국고용정보원_워크넷 채용정보' 검색
 # ----------------------------------------------------------------------------
 def get_worknet():
@@ -327,7 +406,7 @@ def get_worknet():
             out.append(dict(source="워크넷", type=jtype, org=org or "워크넷 공고", title=title or "채용공고",
                             location=clean(str(it.get("workRgnNmLst", ""))), emp=clean(str(it.get("hireTypeNmLst", ""))),
                             period=clean(f"{it.get('pbancBgngYmd','')} ~ {it.get('pbancEndYmd','')}"),
-                            endDate="", dday="", salary="", edu="석사 이상", field="연구", career="",
+                            endDate="", dday="", salary="", edu="학사·석사", field="연구", career="",
                             headcount="", elig="", pref="", score=sc, reasons=rs, url=url))
         print(f"[워크넷] {len(out)}건")
     except Exception as ex:
@@ -358,9 +437,9 @@ def get_narailteo():
             sc, rs = score("", "", "", "", "지자체·지방연구원")
             out.append(dict(source="나라일터", type="지자체·지방연구원", org="지자체(나라일터)", title=title,
                             location="", emp="공무원(연구사)", period="", endDate="", dday="", salary="",
-                            edu="석사 이상", field="연구", career="", headcount="", elig="", pref="",
+                            edu="학사·석사", field="연구", career="", headcount="", elig="", pref="",
                             score=sc, reasons=rs, url=url))
-            if len(out) >= 12:
+            if len(out) >= 15:
                 break
         print(f"[나라일터] {len(out)}건")
     except Exception as ex:
@@ -383,6 +462,7 @@ def main():
     allj = []
     allj += _safe(get_alio, "잡알리오")
     allj += _safe(get_hibrain, "하이브레인넷")
+    allj += _safe(get_work24, "고용24")
     allj += _safe(get_worknet, "워크넷")
     allj += _safe(get_narailteo, "나라일터")
 
@@ -412,8 +492,8 @@ def main():
         updatedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         updatedAtKr=datetime.now().strftime("%Y년 %m월 %d일 %H:%M"),
         count=len(allj), companies=companies, recommended=reco,
-        target="석사급(석사 이상·박사 미만) · 자연과학/이공계 연구직",
-        sources=["잡알리오", "하이브레인넷", "워크넷(API)", "나라일터"],
+        target="학사·석사 · 기상/대기/환경/농림·해양기상/데이터·AI/환경컨설팅/대기측정",
+        sources=["잡알리오", "하이브레인넷", "고용24(API)", "워크넷(API)", "나라일터"],
         jobs=allj,
     )
     js = json.dumps(payload, ensure_ascii=False, indent=2)
