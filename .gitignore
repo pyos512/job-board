@@ -20,3 +20,7 @@ _site_test/
 # 로그
 logs/
 *.log
+
+# 임시 점검 산출물
+_probe.txt
+_check.txt

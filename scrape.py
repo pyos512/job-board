@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 「기상·대기환경·환경·농림/해양기상·데이터/AI·환경컨설팅·대기측정 · 학사·석사」 채용공고 수집기
-소스: 잡알리오 + 하이브레인넷(카테고리+분야 키워드검색) + 기상청 게시판 + 워크넷 API(선택) + 나라일터(best-effort)
+소스: 잡알리오 + 하이브레인넷(카테고리+분야 키워드검색) + 기상청 게시판 + 학회(대기환경·기상) + 워크넷 API(선택) + 나라일터(best-effort)
 제외: 위촉연구원·건축·교수초빙/대학원생모집·경제인문사회 기관·타 이공계
 
 출력: data/jobs.json, data/jobs.js  (프론트엔드 index.html 이 읽음)
@@ -85,8 +85,9 @@ HARD_EXCLUDE = re.compile(
 # 대학 교수 초빙·임용, 대학원생/연구생 '모집'(=채용 아님)은 제외 — 학사·석사 '채용'만 남김
 ACADEMIC_EXCLUDE = re.compile(
     r"교원|초빙|임용|조교수|부교수|정교수|석좌|교수\s*채용|전임교원|연구교수|산학협력중점교수|강사|"
+    r"박사\s*후|박사후|포닥|post-?doc|박사급|"                       # 박사후연구원(post-doc) 제외
     r"신입생|대학원생|석사과정|박사과정|석·?박사\s*통합|학·?석사|연구생\s*모집|수료|장학생|"
-    r"학년도.{0,8}(신입|모집|임용|초빙|편입)")
+    r"학년도.{0,8}(신입|모집|임용|초빙|편입)", re.I)
 # 경제인문사회 계열 기관(법·경제·경영·행정·복지·교통·국토 정책연구) — 기관명으로 제외
 #  ※ '한국환경연구원'은 SCI_GOV(과학기술)로 분류돼 제외되지 않음(환경 분야라 유지).
 ECON_SOC_ORG = re.compile(
@@ -420,6 +421,61 @@ def get_kma():
     return out
 
 # ----------------------------------------------------------------------------
+# 3-2) 학회 채용게시판 (대기환경학회·기상학회 — 동일 kunsolution 게시판 엔진)
+#      하이브레인·잡알리오에 안 나오는 학회/연구소 공고를 직접 수집
+# ----------------------------------------------------------------------------
+import urllib.parse as _uparse
+
+def get_kunsolution_board(base, bbs_id, source, default_org, cap=15):
+    out = []
+    url = f"{base}/kunsolution/board.php?bbs_id={bbs_id}"
+    try:
+        r = requests.get(url, headers=UA, timeout=25, verify=False)
+        r.encoding = r.apparent_encoding or "utf-8"
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as ex:
+        print(f"[{source}] 실패: {ex}"); return out
+    seen = set()
+    for a in soup.select("a[href*='bbs_no=']"):
+        href = a.get("href", "")
+        m = re.search(r"bbs_no=(\d+)", href)
+        if not m or m.group(1) in seen:
+            continue
+        title = clean(a.get_text())
+        if len(title) < 5 or not re.search(r"채용|모집|구인|공고", title):
+            continue
+        seen.add(m.group(1))
+        # 제목 앞 [기관명] 에서 기관 추출
+        om = re.match(r"\s*\[([^\]]{2,30})\]", title)
+        org = clean(om.group(1)) if om else default_org
+        if not accept(org, title):           # 분야 + 위촉·건축·박사후·교수 등 제외
+            continue
+        full = _uparse.urljoin(url, href)
+        jtype = classify(org)
+        sc, rs = score("", "", "", "", jtype)
+        out.append(dict(source=source, type=jtype, org=org, title=title,
+                        location="", emp="", period="", endDate="", dday="",
+                        salary="", edu="학사·석사", field="", career="", headcount="",
+                        elig="", pref="", score=sc + 6, reasons=rs + ["학회 채용게시판"], url=full))
+        if len(out) >= cap:
+            break
+    return out
+
+def get_societies():
+    print("[학회] 수집...")
+    res = []
+    res += get_kunsolution_board("https://kosae.or.kr:50010", "board_03", "대기환경학회", "한국대기환경학회")
+    res += get_kunsolution_board("https://www.komes.or.kr:50000", "komesjob", "기상학회", "한국기상학회")
+    # 제목 기준 중복 제거(두 학회에 같은 공고가 올라오는 경우)
+    seen, uniq = set(), []
+    for j in res:
+        key = re.sub(r"\s+", "", j["title"])[:40]
+        if key not in seen:
+            seen.add(key); uniq.append(j)
+    print(f"[학회] {len(uniq)}건")
+    return uniq
+
+# ----------------------------------------------------------------------------
 # 4) 워크넷 (공공데이터포털 공식 API, 선택) — 환경변수 WORKNET_KEY 필요
 #    키 발급: https://www.data.go.kr  '한국고용정보원_워크넷 채용정보' 검색
 # ----------------------------------------------------------------------------
@@ -505,6 +561,7 @@ def main():
     allj += _safe(get_alio, "잡알리오")
     allj += _safe(get_hibrain, "하이브레인넷")
     allj += _safe(get_kma, "기상청")
+    allj += _safe(get_societies, "학회")
     allj += _safe(get_worknet, "워크넷")
     allj += _safe(get_narailteo, "나라일터")
 
