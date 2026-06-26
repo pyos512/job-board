@@ -1,70 +1,38 @@
-name: 채용보드 매일 갱신·암호화·메일
+name: GitHub Pages 배포
 
-# 매일: 수집 → '그날의 비밀번호'로 암호화 → jobs.enc.json 커밋 → 링크+비번 메일 → Pages 배포(Actions)
+# 하이브리드 구조: 수집·암호화·메일은 로컬 PC(publish.py)가 담당.
+# 여기서는 PC가 푸시한 암호문(jobs.enc.json)을 받아 Pages 로 배포만 한다.
+# (한국 정부사이트가 GitHub 해외 러너 IP를 차단해 클라우드 수집은 불가)
 on:
-  schedule:
-    - cron: "0 23 * * *"   # UTC 23:00 = 한국시간(KST) 매일 오전 8시
-  workflow_dispatch:        # 수동 실행 버튼
+  push:
+    branches: [main]
+    paths:
+      - "data/jobs.enc.json"
+      - "index.html"
+      - "assets/**"
+      - ".well-known/**"
+      - "robots.txt"
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 concurrency:
-  group: jobs-update
-  cancel-in-progress: false
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  update:
+  deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: 의존성 설치
-        run: pip install requests beautifulsoup4 cryptography
-
-      - name: 채용공고 수집
-        env:
-          WORKNET_KEY: ${{ secrets.WORKNET_KEY }}   # (선택) 워크넷 API 키
-        run: python scrape.py
-
-      - name: 그날의 비밀번호로 암호화
-        id: enc
-        run: |
-          KEY="$(python build_secure.py | sed -n 's/^DAILY_KEY=//p')"
-          echo "::add-mask::$KEY"
-          echo "daily_key=$KEY" >> "$GITHUB_OUTPUT"
-
-      - name: 암호문 커밋 (기록용)
-        run: |
-          git config user.name  "job-board-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add -f data/jobs.enc.json
-          if git diff --cached --quiet; then
-            echo "변경 없음 — 커밋 생략"
-          else
-            git commit -m "chore(data): 암호화 채용공고 자동 갱신 $(date -u +%Y-%m-%d)"
-            git push
-          fi
-
-      - name: 링크 + 오늘의 비밀번호 메일 발송
-        env:
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          MAIL_TO: ${{ secrets.MAIL_TO }}
-          SITE_URL: ${{ secrets.SITE_URL }}
-          DAILY_KEY: ${{ steps.enc.outputs.daily_key }}
-        run: python email_digest.py --link
-
-      # 배포할 정적 파일만 모은다 (평문 데이터·소스·비밀 제외)
-      - name: Pages 산출물 구성
+      - name: 배포할 정적 파일만 구성 (평문·소스·비밀 제외)
         run: |
           mkdir -p _site/data _site/assets _site/.well-known
           cp index.html robots.txt .nojekyll _site/ 2>/dev/null || true
@@ -72,16 +40,9 @@ jobs:
           cp .well-known/security.txt _site/.well-known/ 2>/dev/null || true
           cp data/jobs.enc.json _site/data/
 
+      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
-
-  deploy:
-    needs: update
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
