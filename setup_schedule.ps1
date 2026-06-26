@@ -33,7 +33,7 @@ $action  = New-ScheduledTaskAction -Execute $Daily `
            -Argument 'auto' -WorkingDirectory $ScriptDir
 $trigger = New-ScheduledTaskTrigger -Daily -At $RunAt
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
-            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -WakeToRun `
             -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 
 try { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue } catch {}
