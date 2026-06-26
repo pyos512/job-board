@@ -28,12 +28,30 @@ def gen_password():
     return "-".join(groups)
 
 
+def fixed_password():
+    """고정 비밀번호: 환경변수 DAILY_KEY > email_config.json 의 site_password.
+    둘 다 없으면 무작위 생성(권장 안 함 — 매번 바뀜)."""
+    env = os.environ.get("DAILY_KEY")
+    if env:
+        return env
+    cfg = os.path.join(ROOT, "email_config.json")
+    if os.path.exists(cfg):
+        try:
+            with open(cfg, encoding="utf-8") as f:
+                pw = (json.load(f).get("site_password") or "").strip()
+            if pw:
+                return pw
+        except Exception:
+            pass
+    return gen_password()
+
+
 def main():
     if not os.path.exists(SRC):
         print(f"[오류] {SRC} 없음. 먼저 scrape.py 실행.", file=sys.stderr)
         sys.exit(1)
 
-    password = os.environ.get("DAILY_KEY") or gen_password()
+    password = fixed_password()
     with open(SRC, "rb") as f:
         plaintext = f.read()
 

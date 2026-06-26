@@ -171,8 +171,8 @@ def build_html(data):
     </td></tr></table></body></html>"""
 
 
-def build_link_html(data, url, password):
-    """링크 + 오늘의 비밀번호 안내 메일 (전체 공고 내용은 싣지 않음 → 링크로만 열람)."""
+def build_link_html(data, url, password=""):
+    """링크 안내 메일 (비밀번호는 본인이 알고 있으므로 메일에 싣지 않음)."""
     updated = data.get("updatedAtKr") or data.get("updatedAt") or ""
     count = data.get("count", len(data.get("jobs", [])))
     rec_n = data.get("recommended", "")
@@ -191,19 +191,13 @@ def build_link_html(data, url, password):
             총 <b style="color:{INK};">{count}</b>건 · ⭐추천 {rec_n}건 · 갱신 {esc(updated)}</div>
 
           <a href="{esc(url)}" target="_blank"
-             style="display:inline-block;margin:22px 0 18px;padding:13px 26px;background:{GREEN};
-             color:#fff;font-size:15px;font-weight:700;text-decoration:none;border-radius:12px;">
+             style="display:inline-block;margin:22px 0 16px;padding:14px 30px;background:{GREEN};
+             color:#fff;font-size:16px;font-weight:700;text-decoration:none;border-radius:12px;">
              채용보드 열기 →</a>
 
-          <div style="background:#f3efe4;border:1px solid {LINE};border-radius:12px;padding:14px 16px;margin-top:6px;">
-            <div style="color:{SUB};font-size:12px;margin-bottom:6px;">오늘의 비밀번호 (매일 바뀝니다)</div>
-            <div style="font-size:22px;font-weight:800;letter-spacing:3px;color:{INK};
-                 font-family:Consolas,Menlo,monospace;">{esc(password)}</div>
-          </div>
-
-          <div style="color:{SUB};font-size:11px;line-height:1.6;margin-top:18px;text-align:left;">
-            · 링크를 열고 위 비밀번호를 입력하면 오늘의 공고를 볼 수 있습니다.<br>
-            · 이 메일을 받은 사람만 접속할 수 있도록 데이터는 매일 새 비밀번호로 암호화됩니다.<br>
+          <div style="color:{SUB};font-size:12px;line-height:1.7;margin-top:8px;text-align:left;">
+            · 링크를 열고 <b>평소 쓰는 비밀번호</b>를 입력하면 공고가 보입니다.<br>
+            · 데이터는 암호화되어 있어 비밀번호를 아는 본인만 열람할 수 있습니다.<br>
             · 지원 전 반드시 원문 공고에서 자격·연봉·접수기간을 확인하세요.
           </div>
         </td></tr>
@@ -242,12 +236,11 @@ def main():
 
     if link_mode:
         url = cfg.get("site_url", "")
-        password = os.environ.get("DAILY_KEY", "")
-        if not url or not password:
-            print("[오류] --link 에는 SITE_URL 과 DAILY_KEY(환경변수)가 필요합니다.")
+        if not url:
+            print("[오류] --link 에는 site_url(email_config.json 또는 SITE_URL)이 필요합니다.")
             sys.exit(3)
-        html = build_link_html(data, url, password)
-        subject = f"[채용보드] {today} — 링크와 오늘의 비밀번호"
+        html = build_link_html(data, url)
+        subject = f"[채용보드] {today} 갱신 — 총 {count}건"
         if preview:
             with open(PREVIEW, "w", encoding="utf-8") as f:
                 f.write(html)

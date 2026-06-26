@@ -83,7 +83,7 @@
     var card = elem("div", { class: "gate-card" }, [
       elem("div", { class: "gate-emoji", text: "🔒" }),
       elem("h2", { class: "gate-title", text: "공공·연구기관 채용보드" }),
-      elem("p", { class: "gate-sub", text: "이메일로 받은 ‘오늘의 비밀번호’를 입력하세요. 매일 갱신됩니다." }),
+      elem("p", { class: "gate-sub", text: "비밀번호를 입력하세요." }),
       elem("div", { class: "gate-row" }, [input, btn]),
       msg
     ]);
