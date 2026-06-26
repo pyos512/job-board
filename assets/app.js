@@ -11,8 +11,10 @@
     "전체", "⭐ 추천",
     "정부출연(과학기술)",
     "지자체·지방연구원", "공공기관·공기업", "연구기관·진흥원", "대학·병원",
-    "하이브레인넷(연구실·기업)"
+    "하이브레인넷(연구실·기업)",
+    "🕒 최근 마감"
   ];
+  var TAB_CLOSED = "🕒 최근 마감";
 
   var state = { data: null, tab: "전체", q: "", sort: "reco" };
 
@@ -66,8 +68,8 @@
   /* ---------- 카드 ---------- */
   function card(job) {
     var dd = ddayInfo(job);
-    var reco = job.score >= 45;
-    var c = el("article", { class: "card " + (job.score >= 45 ? "s-good" : job.score >= 30 ? "s-mid" : "") + (reco ? " reco" : "") });
+    var reco = job.score >= 40;
+    var c = el("article", { class: "card " + (job.score >= 40 ? "s-good" : job.score >= 25 ? "s-mid" : "") + (reco ? " reco" : "") + (job.closed ? " is-closed" : "") });
 
     c.appendChild(el("div", { class: "card-top" }, [
       el("span", { class: "org", text: job.org || "기관" }),
@@ -138,8 +140,13 @@
   /* ---------- 필터/정렬 ---------- */
   function visibleJobs() {
     var jobs = (state.data.jobs || []).slice();
-    if (state.tab === "⭐ 추천") jobs = jobs.filter(function (j) { return j.score >= 45; });
-    else if (state.tab !== "전체") jobs = jobs.filter(function (j) { return j.type === state.tab; });
+    if (state.tab === TAB_CLOSED) {
+      jobs = jobs.filter(function (j) { return j.closed; });               // 마감 탭: 지난 공고만
+    } else {
+      jobs = jobs.filter(function (j) { return !j.closed; });              // 그 외 탭: 진행중만
+      if (state.tab === "⭐ 추천") jobs = jobs.filter(function (j) { return j.score >= 40; });
+      else if (state.tab !== "전체") jobs = jobs.filter(function (j) { return j.type === state.tab; });
+    }
     if (state.q) {
       var q = state.q.toLowerCase();
       jobs = jobs.filter(function (j) {
@@ -156,15 +163,18 @@
 
   /* ---------- 탭 ---------- */
   function buildTabs() {
-    var counts = {}, jobs = state.data.jobs || [];
-    jobs.forEach(function (j) { counts[j.type] = (counts[j.type] || 0) + 1; });
-    counts["전체"] = jobs.length;
-    counts["⭐ 추천"] = jobs.filter(function (j) { return j.score >= 45; }).length;
+    var counts = {}, all = state.data.jobs || [];
+    var active = all.filter(function (j) { return !j.closed; });
+    active.forEach(function (j) { counts[j.type] = (counts[j.type] || 0) + 1; });
+    counts["전체"] = active.length;
+    counts["⭐ 추천"] = active.filter(function (j) { return j.score >= 40; }).length;
+    counts[TAB_CLOSED] = all.length - active.length;       // 최근 마감 건수
     var host = document.getElementById("tabs");
     host.textContent = "";
     TAB_ORDER.forEach(function (name) {
-      if (name !== "전체" && name !== "⭐ 추천" && !counts[name]) return;
-      var t = el("button", { class: "tab" + (name === state.tab ? " active" : "") + (name === "⭐ 추천" ? " star" : ""), type: "button" }, [
+      if (name !== "전체" && name !== "⭐ 추천" && !counts[name]) return;   // 빈 탭 숨김(마감 0건이면 숨김)
+      var cls = "tab" + (name === state.tab ? " active" : "") + (name === "⭐ 추천" ? " star" : "") + (name === TAB_CLOSED ? " closed" : "");
+      var t = el("button", { class: cls, type: "button" }, [
         document.createTextNode(name + " "),
         el("span", { class: "cnt", text: String(counts[name] || 0) })
       ]);
@@ -199,7 +209,7 @@
     document.getElementById("stCount").textContent = d.count || (d.jobs ? d.jobs.length : 0);
     document.getElementById("stCompanies").textContent = d.companies || "-";
     document.getElementById("stReco").textContent = d.recommended != null ? d.recommended :
-      (d.jobs || []).filter(function (j) { return j.score >= 45; }).length;
+      (d.jobs || []).filter(function (j) { return !j.closed && j.score >= 40; }).length;
     document.getElementById("updated").textContent = d.updatedAtKr || d.updatedAt || "-";
   }
 

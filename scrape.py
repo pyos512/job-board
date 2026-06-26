@@ -58,8 +58,9 @@ FIELD_KO = re.compile(
     r"환경관리|환경보전|환경정책|환경분석|수질|생태|실내공기|실내공기질|공기질|"
     # 신재생에너지·풍력·태양광
     r"신재생|신재생에너지|재생에너지|태양광|풍력|해상풍력|풍력발전|에너지전환|"
-    # 농림기상·해양기상
+    # 농림기상·해양기상·산림과학(산림 노무직은 NEG/필드 미매칭으로 제외)
     r"농림기상|농업기상|해양기상|해양관측|해양환경|해양기후|해양대기|"
+    r"산림과학|산림환경|산림기상|산림보호|산림자원|산림생태|산림수자원|임업시험|수목원|"
     # 데이터분석·통계·AI
     r"데이터|빅데이터|데이터분석|데이터사이언스|데이터엔지니어|통계분석|통계|"
     r"인공지능|머신러닝|딥러닝|기계학습|"
@@ -127,6 +128,18 @@ def to_yymmdd(s: str) -> str:
         return ""
     y = m.group(1)
     return f"{y[2:] if len(y)==4 else y}.{m.group(2)}.{m.group(3)}"
+
+from datetime import date as _date
+def days_until(end: str):
+    """'26.07.03' → 마감까지 남은 일수(음수=지남). 파싱 불가면 None."""
+    m = re.search(r"(\d{2})\.(\d{2})\.(\d{2})", end or "")
+    if not m:
+        return None
+    try:
+        d = _date(2000 + int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+    return (d - _date.today()).days
 
 def fmt_qualifications(raw: str) -> str:
     """응시자격 텍스트를 항목 단위로 줄바꿈 정리(가독성)."""
@@ -203,10 +216,12 @@ ALIO_PREHINT = re.compile(
     r"데이터|통계|인공지능|AI|빅데이터|측정|모니터링|관측|분석|원격탐사|위성|"
     r"연구|연구원|연구직|연구소|과학|기술원|진흥원|에너지|기상청|환경공단|환경과학|생태원|극지")
 
-def get_alio():
-    # area(연구직) 제한 제거 → 진행중 전체에서 분야 힌트 행만 상세조회. 학사·석사 포함(박사 전용 제외).
-    url = ("https://job.alio.go.kr/recruit.do?pageSet=300&order=TERM_END&sort=ASC&ing=2")
-    print("[잡알리오] 목록 수집...")
+def get_alio(closed=False, window=5):
+    # closed=False: 진행중(ing=2). closed=True: 최근 마감(ing=3) 중 window일 이내 지난 것만.
+    ing = "3" if closed else "2"
+    sort = "DESC" if closed else "ASC"   # 마감 모드는 최근 마감 우선
+    url = f"https://job.alio.go.kr/recruit.do?pageSet=300&order=TERM_END&sort={sort}&ing={ing}"
+    print(f"[잡알리오{'-마감' if closed else ''}] 목록 수집...")
     r = GET(url, headers=UA); r.encoding = "utf-8"
     soup = BeautifulSoup(r.text, "html.parser")
     rows = []
@@ -236,6 +251,10 @@ def get_alio():
             continue
         if not ALIO_PREHINT.search(rr["title"] + " " + rr["org"]):  # 분야/연구 힌트 없으면 상세 생략
             continue
+        if closed:                                             # 마감 모드: 최근 window일 이내 지난 것만
+            dn = days_until(rr["end"])
+            if dn is None or dn > 0 or dn < -window:
+                continue
         durl = f"https://job.alio.go.kr/recruitview.do?idx={rr['idx']}"
         sal = pref = edu = field = career = period = head = elig = ""
         try:
@@ -288,9 +307,11 @@ def get_alio():
         jobs.append(dict(source="잡알리오", type=jtype, org=rr["org"], title=rr["title"],
                          location=rr["loc"], emp=rr["emp"], period=period, endDate=rr["end"],
                          dday="", salary=sal, edu=edu, field=field, career=career, headcount=head,
-                         elig=elig, pref=pref, score=sc, reasons=rs, url=durl))
+                         elig=elig, pref=pref, score=sc, reasons=rs, url=durl, closed=closed))
         per_company[rr["org"]] = per_company.get(rr["org"], 0) + 1
-    print(f"[잡알리오] 이공계 석사급 확정 {len(jobs)}건")
+        if closed and len(jobs) >= 25:
+            break
+    print(f"[잡알리오{'-마감' if closed else ''}] 확정 {len(jobs)}건")
     return jobs
 
 # ----------------------------------------------------------------------------
@@ -476,6 +497,67 @@ def get_societies():
     return uniq
 
 # ----------------------------------------------------------------------------
+# 3-3) 정부 eGov 게시판 (산림청·수도권대기환경청 등) — 표준 게시판 직접 수집
+# ----------------------------------------------------------------------------
+NOTICE_SKIP = re.compile(r"합격|결과|명단|정답|점수|제출서류|면접|서류전형|전형\s*일정|"
+                         r"필기시험|원서접수\s*결과|선발예정|취소|연기|발표|선정")
+
+def get_egov_board(list_url, source, default_org, cap=12):
+    out = []
+    try:
+        r = GET(list_url, headers=UA); r.encoding = r.apparent_encoding or "utf-8"
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as ex:
+        print(f"[{source}] 실패: {ex}"); return out
+    rows = []
+    for t in soup.select("table"):
+        rows = t.select("tbody tr")
+        if rows:
+            break
+    for tr in rows:
+        a = tr.find("a", href=True)
+        if not a:
+            continue
+        title = clean(a.get_text())
+        if len(title) < 5 or not re.search(r"채용|모집|선발", title):
+            continue
+        if NOTICE_SKIP.search(title):                 # 합격자·결과·일정 안내 제외
+            continue
+        om = re.match(r"\s*\[([^\]]{2,30})\]", title)  # [기관] 접두
+        org = clean(om.group(1)) if om else default_org
+        if not accept(org, title):
+            continue
+        tds = [clean(td.get_text(" ")) for td in tr.find_all("td")]
+        # 마감일 추정: 미래 날짜 셀
+        end = ""
+        for c in tds:
+            mm = re.search(r"(20\d{2})[-.](\d{2})[-.](\d{2})", c)
+            if mm:
+                end = to_yymmdd(mm.group(0))           # 가장 마지막(=마감일일 확률) 우선
+        href = a.get("href", "")
+        full = _uparse.urljoin(list_url, href)
+        jtype = classify(org)
+        sc, rs = score("", "", "", "", jtype)
+        out.append(dict(source=source, type=jtype, org=org, title=title,
+                        location="", emp="", period="", endDate=end, dday="",
+                        salary="", edu="학사·석사", field="", career="", headcount="",
+                        elig="", pref="", score=sc + 4, reasons=rs + [f"{source} 직접수집"], url=full))
+        if len(out) >= cap:
+            break
+    print(f"[{source}] {len(out)}건")
+    return out
+
+def get_gov_boards():
+    res = []
+    # 수도권대기환경청·지방환경청(환경부 계열) 채용공고
+    res += get_egov_board("https://www.mcee.go.kr/home/web/index.do?menuId=10574",
+                          "환경청", "수도권대기환경청")
+    # 산림청 채용정보
+    res += get_egov_board("https://www.forest.go.kr/kfsweb/cop/bbs/selectBoardList.do?bbsId=BBSMSTR_1034&mn=NKFS_04_01_03",
+                          "산림청", "산림청")
+    return res
+
+# ----------------------------------------------------------------------------
 # 4) 워크넷 (공공데이터포털 공식 API, 선택) — 환경변수 WORKNET_KEY 필요
 #    키 발급: https://www.data.go.kr  '한국고용정보원_워크넷 채용정보' 검색
 # ----------------------------------------------------------------------------
@@ -556,43 +638,61 @@ def _safe(fn, name):
         return []
 
 
+CLOSED_WINDOW = 5  # 최근 마감(지난) 공고 표시 기간(일)
+
 def main():
     allj = []
-    allj += _safe(get_alio, "잡알리오")
+    allj += _safe(get_alio, "잡알리오")                       # 진행중
+    allj += _safe(lambda: get_alio(closed=True, window=CLOSED_WINDOW), "잡알리오-마감")  # 최근 마감
     allj += _safe(get_hibrain, "하이브레인넷")
     allj += _safe(get_kma, "기상청")
     allj += _safe(get_societies, "학회")
+    allj += _safe(get_gov_boards, "정부게시판")
     allj += _safe(get_worknet, "워크넷")
     allj += _safe(get_narailteo, "나라일터")
 
     # 모든 소스가 실패해 0건이면 기존 데이터를 덮어쓰지 않고 실패 종료
-    # (빈 보드 배포 방지 → 직전 배포·데이터 유지)
     if not allj:
         print("\n⚠️ 수집 0건 — 모든 소스 실패로 판단. 기존 데이터를 유지하고 종료합니다.")
         sys.exit(1)
 
-    # 정렬: 점수↓, 마감 정보 있는 것 우선
-    allj.sort(key=lambda j: (-j["score"], j["endDate"] or "9"))
+    # 마감 상태 계산: endDate 기준. 지난 지 CLOSED_WINDOW일 초과면 제외, 이내면 closed=True
+    kept = []
+    for j in allj:
+        dn = days_until(j.get("endDate", ""))
+        if dn is not None and dn < 0:
+            if dn < -CLOSED_WINDOW:
+                continue                          # 너무 오래 지난 공고 제외
+            j["closed"] = True
+        else:
+            j["closed"] = j.get("closed", False)
+        kept.append(j)
+    allj = kept
 
-    # 기관당 전역 상한(과다 노출 방지) — 점수 높은 공고 우선 유지
+    # 정렬: 진행중 우선 → 점수↓ → 마감 가까운 순
+    allj.sort(key=lambda j: (j["closed"], -j["score"], j["endDate"] or "9"))
+
+    # 기관당 상한(진행중/마감 각각 최대 4건)
     capped, cnt = [], {}
     for j in allj:
-        c = cnt.get(j["org"], 0)
-        if c >= 4:
+        key = (j["org"], j["closed"])
+        if cnt.get(key, 0) >= 4:
             continue
-        cnt[j["org"]] = c + 1
+        cnt[key] = cnt.get(key, 0) + 1
         capped.append(j)
     allj = capped
 
     placeholders = {"하이브레인넷 공고", "지자체(나라일터)", "워크넷 공고"}
-    companies = len({j["org"] for j in allj if j["org"] not in placeholders})
-    reco = sum(1 for j in allj if j["score"] >= RECO_CUTOFF)
+    active = [j for j in allj if not j["closed"]]
+    closed_n = sum(1 for j in allj if j["closed"])
+    companies = len({j["org"] for j in active if j["org"] not in placeholders})
+    reco = sum(1 for j in active if j["score"] >= RECO_CUTOFF)
     payload = dict(
         updatedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         updatedAtKr=datetime.now().strftime("%Y년 %m월 %d일 %H:%M"),
-        count=len(allj), companies=companies, recommended=reco,
+        count=len(active), closedCount=closed_n, companies=companies, recommended=reco,
         target="학사·석사 · 기상/대기/환경/농림·해양기상/데이터·AI/환경컨설팅/대기측정",
-        sources=["잡알리오", "하이브레인넷(키워드검색)", "기상청", "워크넷(API)", "나라일터"],
+        sources=["잡알리오", "하이브레인넷", "기상청", "대기환경학회", "기상학회", "수도권대기환경청", "산림청", "워크넷(API)", "나라일터"],
         jobs=allj,
     )
     js = json.dumps(payload, ensure_ascii=False, indent=2)
@@ -600,7 +700,7 @@ def main():
         f.write(js)
     with open(os.path.join(DATA, "jobs.js"), "w", encoding="utf-8") as f:
         f.write("/* 자동생성 — 직접 수정 금지. scrape.py 가 갱신합니다. */\nwindow.__JOBS__ = " + js + ";")
-    print(f"\n완료 ✅  총 {len(allj)}건 / 기관 {companies}개사 / ⭐추천 {reco}건")
+    print(f"\n완료 ✅  진행중 {len(active)}건 / 최근마감 {closed_n}건 / 기관 {companies}개사 / ⭐추천 {reco}건")
     print(f"갱신: {payload['updatedAtKr']}")
 
 

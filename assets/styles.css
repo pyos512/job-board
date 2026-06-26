@@ -213,3 +213,9 @@ footer a{color:var(--accent);font-weight:700;text-decoration:none}
 .gate-btn:disabled{opacity:.6; cursor:default}
 .gate-msg{min-height:18px; margin-top:12px; font-size:13px; color:var(--ink-soft)}
 .gate-msg.err{color:var(--danger)}
+
+/* ===== 최근 마감(지난) 공고 ===== */
+.card.is-closed{opacity:.6; filter:grayscale(.25)}
+.card.is-closed .title{text-decoration:line-through; text-decoration-color:var(--line)}
+.card.is-closed .badge.dday{background:#e7e0d2; color:#8a7f6c}
+.tab.closed .cnt{background:var(--danger); color:#fff}
