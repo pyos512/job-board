@@ -18,36 +18,29 @@
 
 ---
 
-## 🔁 매일 자동 갱신 (하이브리드) + 📧 링크·비밀번호 메일
+## 🔁 매일 자동 갱신 (하이브리드) + 📧 링크 메일
 
 > ⚠️ **왜 하이브리드?** 한국 정부 채용사이트(잡알리오·나라일터 등)가 **GitHub 해외 러너 IP를 차단**해
 > 클라우드(Actions) 수집은 불가능합니다. 그래서 **수집·암호화·푸시·메일은 한국에 있는 이 PC**가 맡고,
 > **GitHub는 푸시받은 암호문을 Pages로 배포만** 합니다.
 
 작업 스케줄러(`PublicJobBoard_DailyUpdate`, 매일 08:00)가 `run_daily.bat` → **`publish.py`** 를 실행:
-**① 수집(`scrape.py`) → ② 그날 비번으로 암호화(`build_secure.py`) → ③ `git push`(=Pages 배포) → ④ 링크+비번 메일(`email_digest.py --link`)**
+**① 수집(`scrape.py`) → ② 고정 비번으로 암호화(`build_secure.py`) → ③ `git push`(=Pages 배포) → ④ 링크 메일(`email_digest.py --link`)**
 
 ```powershell
-# 재등록 / 시간 변경
-.\setup_schedule.ps1
-# 즉시 실행(테스트) — 수집·암호화·푸시·메일 전부
-Start-ScheduledTask -TaskName PublicJobBoard_DailyUpdate
-# 해제
-Unregister-ScheduledTask -TaskName PublicJobBoard_DailyUpdate -Confirm:$false
+.\setup_schedule.ps1                                       # 재등록 / 시간 변경
+Start-ScheduledTask -TaskName PublicJobBoard_DailyUpdate   # 즉시 실행(테스트)
+Unregister-ScheduledTask -TaskName PublicJobBoard_DailyUpdate -Confirm:$false  # 해제
 ```
 - 로그: `logs\daily.log`.
-- 📌 PC가 08시에 꺼져 있어도 `StartWhenAvailable` 옵션으로 **켜지면 곧 따라잡아 실행**됩니다.
+- 📌 **절전(잠자기) 중에도 매일 08시에 스스로 깨어나 실행 후 다시 잠듦** — 작업의 `WakeToRun` + 전원플랜 ‘깨우기 타이머 허용’. 완전 종료(전원 off) 시에는 다음 부팅 때 1회 따라잡음.
 
-### 📧 이메일 설정 (최초 1회)
-1. **Gmail 앱 비밀번호 발급**: 구글 계정 → 보안 → 2단계 인증 → '앱 비밀번호' 16자.
-2. **`email_config.json`** 의 `"password"`(16자)와 `"site_url"`(예: `https://<id>.github.io/job-board/`) 설정. 이 파일은 `.gitignore`로 커밋 제외.
-3. **테스트**:
-   ```powershell
-   .\.venv\Scripts\python publish.py                       # 전체 파이프라인(수집·암호화·푸시·메일)
-   .\.venv\Scripts\python email_digest.py --link --preview # 메일 발송 없이 미리보기만
-   ```
-- 메일엔 **링크 + 그날의 비밀번호**가 담깁니다. 링크를 열고 비번을 넣어야 공고가 보입니다(데이터는 매일 새 키로 암호화).
-- 전체 공고를 본문에 담는 다이제스트가 필요하면 인자 없이 `email_digest.py`.
+### 🔐 비밀번호 / 📧 이메일 설정 (`email_config.json`, git 제외)
+- `password`: Gmail **앱 비밀번호**(16자, 메일 발송용).
+- `site_url`: 배포 주소 `https://<id>.github.io/job-board/`.
+- `site_password`: **사이트 접속 고정 비밀번호**. 매일 이 비번으로 암호화하므로 **늘 동일** → 본인만 기억하면 됨.
+- 메일엔 **링크만** 담깁니다(비번 미포함). 링크 열고 `site_password` 입력 → 공고 열람.
+- 테스트: `.\.venv\Scripts\python publish.py` (전체) / `... email_digest.py --link --preview` (발송 없이 미리보기).
 
 ---
 

@@ -4,5 +4,7 @@
   "user": "pyo950512@gmail.com",
   "password": "여기에-16자-앱비밀번호-공백없이",
   "to": "pyo950512@gmail.com",
-  "from_name": "채용보드 봇"
+  "from_name": "채용보드 봇",
+  "site_url": "https://<your-id>.github.io/job-board/",
+  "site_password": "사이트-접속-고정-비밀번호"
 }
