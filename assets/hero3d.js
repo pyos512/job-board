@@ -1,6 +1,6 @@
 /* ============================================================
    히어로 3D 배경 (Three.js, 자체 호스팅)
-   - 따뜻한 베이지/골드 톤의 저폴리 결정체 + 입자
+   - 하늘색/시안 톤의 저폴리 결정체 + 입자
    - 마우스 패럴랙스, 반응형, prefers-reduced-motion 시 정지
    - THREE 미로딩(오프라인 등) 시 조용히 종료 → 페이지 정상 동작
    ============================================================ */
@@ -14,17 +14,17 @@
   var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
   renderer.setClearColor(0x000000, 0);
   var scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0xf3ead6, 0.045);
+  scene.fog = new THREE.FogExp2(0xc8e2f4, 0.045);
 
   var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
   camera.position.set(0, 0, 14);
 
-  // 조명 — 따뜻한 톤
-  scene.add(new THREE.AmbientLight(0xfff4dd, 0.85));
-  var key = new THREE.DirectionalLight(0xffd9a0, 1.1); key.position.set(6, 8, 10); scene.add(key);
-  var rim = new THREE.DirectionalLight(0x2f8f76, 0.6); rim.position.set(-8, -4, 6); scene.add(rim);
+  // 조명 — 시원한 하늘색 톤
+  scene.add(new THREE.AmbientLight(0xeaf4ff, 0.9));
+  var key = new THREE.DirectionalLight(0xd6efff, 1.05); key.position.set(6, 8, 10); scene.add(key);
+  var rim = new THREE.DirectionalLight(0x159fd0, 0.6); rim.position.set(-8, -4, 6); scene.add(rim);
 
-  var palette = [0x1f6f5c, 0xc8772e, 0xb8893b, 0xe7c887, 0x3a9b80];
+  var palette = [0x1379bf, 0x159fd0, 0x2b86c6, 0x7cc1ef, 0x1f8f74];
   var shapes = [];
   var geos = [
     new THREE.IcosahedronGeometry(1, 0),
@@ -61,7 +61,7 @@
   }
   pGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   var particles = new THREE.Points(pGeo, new THREE.PointsMaterial({
-    color: 0xb8893b, size: 0.08, transparent: true, opacity: 0.5
+    color: 0x9fcdec, size: 0.08, transparent: true, opacity: 0.55
   }));
   scene.add(particles);
 

@@ -63,7 +63,6 @@ job-board/
 ├─ assets/                 # styles.css · app.js(XSS방어) · hero3d.js · three.min.js(자체호스팅)
 ├─ data/                   # jobs.json(배포/서버용) · jobs.js(file:// 로컬 로드용)
 ├─ scrape.py               # ★ 수집기 (Python) — 잡알리오·하이브레인·워크넷·나라일터
-├─ update_jobs.ps1         # (레거시) Python 없을 때용 PowerShell 수집기
 ├─ setup_schedule.ps1      # 매일 자동 갱신 작업 등록
 ├─ run_update.bat          # 지금 바로 수집
 ├─ start.bat               # 로컬 서버 + 브라우저 열기

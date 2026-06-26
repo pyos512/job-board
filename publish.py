@@ -37,15 +37,11 @@ def main():
         print("[중단] 수집 실패 — 기존 데이터/배포 유지.")
         sys.exit(1)
 
-    # 2) 암호화 (DAILY_KEY= 한 줄을 stdout 으로 받는다)
+    # 2) 암호화 (고정 비번 사용 — email_config.json 의 site_password)
     r = run([PY, "build_secure.py"], capture_output=True, text=True,
             encoding="utf-8", errors="replace")
     sys.stderr.write(r.stderr or "")
-    daily_key = ""
-    for line in (r.stdout or "").splitlines():
-        if line.startswith("DAILY_KEY="):
-            daily_key = line.split("=", 1)[1].strip()
-    if r.returncode != 0 or not daily_key:
+    if r.returncode != 0:
         print("[중단] 암호화 실패.")
         sys.exit(2)
 
@@ -61,9 +57,8 @@ def main():
     else:
         print("암호문 변경 없음 — 푸시 생략.")
 
-    # 4) 링크 + 오늘의 비밀번호 메일
-    env = dict(CHILD_ENV, DAILY_KEY=daily_key)
-    r = run([PY, "email_digest.py", "--link"], env=env)
+    # 4) 링크 메일 (비번은 메일에 싣지 않음 — 본인이 입력)
+    r = run([PY, "email_digest.py", "--link"])
     if r.returncode != 0:
         print("[중단] 메일 발송 실패.")
         sys.exit(3)
