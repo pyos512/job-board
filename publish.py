@@ -20,9 +20,13 @@ except Exception:
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable  # 현재 인터프리터(.venv) 그대로 사용
 
+# 자식 파이썬이 파이프에 UTF-8로 출력하도록 고정(Windows cp949 디코드 오류 방지)
+CHILD_ENV = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+
 
 def run(args, **kw):
     print(f"$ {' '.join(args)}")
+    kw.setdefault("env", CHILD_ENV)
     return subprocess.run(args, cwd=ROOT, **kw)
 
 
@@ -34,7 +38,8 @@ def main():
         sys.exit(1)
 
     # 2) 암호화 (DAILY_KEY= 한 줄을 stdout 으로 받는다)
-    r = run([PY, "build_secure.py"], capture_output=True, text=True, encoding="utf-8")
+    r = run([PY, "build_secure.py"], capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
     sys.stderr.write(r.stderr or "")
     daily_key = ""
     for line in (r.stdout or "").splitlines():
@@ -57,7 +62,7 @@ def main():
         print("암호문 변경 없음 — 푸시 생략.")
 
     # 4) 링크 + 오늘의 비밀번호 메일
-    env = dict(os.environ, DAILY_KEY=daily_key)
+    env = dict(CHILD_ENV, DAILY_KEY=daily_key)
     r = run([PY, "email_digest.py", "--link"], env=env)
     if r.returncode != 0:
         print("[중단] 메일 발송 실패.")

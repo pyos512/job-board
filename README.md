@@ -18,34 +18,36 @@
 
 ---
 
-## 🔁 매일 자동 갱신 + 📧 이메일 발송
+## 🔁 매일 자동 갱신 (하이브리드) + 📧 링크·비밀번호 메일
 
-작업 스케줄러에 등록되어 있습니다(`PublicJobBoard_DailyUpdate`, 매일 08:00).
-매일 `run_daily.bat`이 **① 수집(`scrape.py`) → ② 다이제스트 메일 발송(`email_digest.py`)** 을 자동 수행합니다.
+> ⚠️ **왜 하이브리드?** 한국 정부 채용사이트(잡알리오·나라일터 등)가 **GitHub 해외 러너 IP를 차단**해
+> 클라우드(Actions) 수집은 불가능합니다. 그래서 **수집·암호화·푸시·메일은 한국에 있는 이 PC**가 맡고,
+> **GitHub는 푸시받은 암호문을 Pages로 배포만** 합니다.
+
+작업 스케줄러(`PublicJobBoard_DailyUpdate`, 매일 08:00)가 `run_daily.bat` → **`publish.py`** 를 실행:
+**① 수집(`scrape.py`) → ② 그날 비번으로 암호화(`build_secure.py`) → ③ `git push`(=Pages 배포) → ④ 링크+비번 메일(`email_digest.py --link`)**
 
 ```powershell
 # 재등록 / 시간 변경
 .\setup_schedule.ps1
-# 즉시 실행(테스트)
+# 즉시 실행(테스트) — 수집·암호화·푸시·메일 전부
 Start-ScheduledTask -TaskName PublicJobBoard_DailyUpdate
 # 해제
 Unregister-ScheduledTask -TaskName PublicJobBoard_DailyUpdate -Confirm:$false
 ```
+- 로그: `logs\daily.log`.
+- 📌 PC가 08시에 꺼져 있어도 `StartWhenAvailable` 옵션으로 **켜지면 곧 따라잡아 실행**됩니다.
 
 ### 📧 이메일 설정 (최초 1회)
-이메일 클라이언트는 JS를 실행하지 않으므로, `jobs.json`을 읽어 **인라인 스타일 정적 HTML 다이제스트**
-(⭐추천 공고 상단 + 전체 공고, D-day·근무지·고용형태)를 만들어 보냅니다.
-
-1. **Gmail 앱 비밀번호 발급**: 구글 계정 → 보안 → 2단계 인증 켜기 → '앱 비밀번호' → 16자 발급.
-   (일반 로그인 비밀번호로는 SMTP 발송이 차단됩니다.)
-2. **`email_config.json`** 의 `"password"` 값에 그 16자(공백 제거)를 붙여넣기. 이 파일은 `.gitignore`로 커밋 제외됨.
-3. **테스트 발송**:
+1. **Gmail 앱 비밀번호 발급**: 구글 계정 → 보안 → 2단계 인증 → '앱 비밀번호' 16자.
+2. **`email_config.json`** 의 `"password"`(16자)와 `"site_url"`(예: `https://<id>.github.io/job-board/`) 설정. 이 파일은 `.gitignore`로 커밋 제외.
+3. **테스트**:
    ```powershell
-   .\.venv\Scripts\python email_digest.py            # 실제 발송
-   .\.venv\Scripts\python email_digest.py --preview  # 발송 없이 digest_preview.html 생성
+   .\.venv\Scripts\python publish.py                       # 전체 파이프라인(수집·암호화·푸시·메일)
+   .\.venv\Scripts\python email_digest.py --link --preview # 메일 발송 없이 미리보기만
    ```
-- 로그: `logs\daily.log`. 발송 실패 시 종료코드·원인이 여기에 남습니다.
-- 다른 메일(네이버 등)은 `email_config.json`의 `smtp_host`/`smtp_port`만 바꾸면 됩니다.
+- 메일엔 **링크 + 그날의 비밀번호**가 담깁니다. 링크를 열고 비번을 넣어야 공고가 보입니다(데이터는 매일 새 키로 암호화).
+- 전체 공고를 본문에 담는 다이제스트가 필요하면 인자 없이 `email_digest.py`.
 
 ---
 
@@ -132,14 +134,14 @@ job-board/
 - **보안 헤더** — `nosniff`·`X-Frame-Options: DENY`·`Referrer-Policy: no-referrer`·`Permissions-Policy`·`HSTS`·COOP/CORP. (`deploy/` 및 `tools/serve.ps1`)
 
 ### 🔐 비공개 배포 (GitHub Pages + 매일 비밀번호) — 현재 구성
-"링크 하나로 어디서든 보되, 나만 접속"을 위해 **데이터를 매일 새 비밀번호로 암호화**합니다.
+"링크 하나로 어디서든 보되, 나만 접속"을 위해 **데이터를 매일 새 비밀번호로 암호화**합니다. (하이브리드: 위 _매일 자동 갱신_ 참고)
 
 - **암호화**: `build_secure.py` 가 `jobs.json` → `data/jobs.enc.json`(AES-256-GCM, PBKDF2-SHA256 200k). 배포본엔 **암호문만** 올라가고 평문 `jobs.json`/`jobs.js`는 `.gitignore`로 제외.
 - **게이트**: `assets/gate.js` 가 비밀번호 입력 → 브라우저 Web Crypto로 복호화 후 렌더. 틀리면 안 열림.
-- **자동화**: `.github/workflows/update.yml` 이 매일 08시(KST) **수집 → 암호화 → 커밋(=Pages 배포) → 링크+오늘의 비밀번호 메일**. PC가 꺼져 있어도 클라우드에서 실행.
-- **메일**: `email_digest.py --link` (링크 + 그날의 비밀번호). 전체 다이제스트는 인자 없이 `email_digest.py`.
-- **필요 Secrets**(저장소 Settings → Secrets → Actions): `GMAIL_USER` `GMAIL_APP_PASSWORD` `MAIL_TO` `SITE_URL` (선택 `SMTP_HOST`/`SMTP_PORT`/`WORKNET_KEY`).
-- **첫 비밀번호**: 저장소 Actions 탭에서 워크플로를 수동 실행(`Run workflow`)하면 그 즉시 메일로 발송됨.
+- **수집·암호화·푸시·메일**: 로컬 `publish.py`(작업 스케줄러). 한국 PC라 정부사이트 수집이 안정적.
+- **배포**: `.github/workflows/update.yml` 은 **푸시 트리거 배포 전용**(수집 안 함). `data/jobs.enc.json` 이 푸시되면 Pages로 자동 배포.
+- **Pages 설정**: 저장소 Settings → Pages → **Build and deployment: GitHub Actions**.
+- **로컬 설정**: `email_config.json` 에 `password`(Gmail 앱 비번)·`site_url`. git 자격증명은 `gh auth login` 으로 1회 설정(푸시용).
 
 > 보안 근거: 비밀번호는 4자리×4그룹(혼동문자 제외) 무작위 + PBKDF2 200k → 공개 저장소의 암호문이라도 브루트포스 비현실적.
 
