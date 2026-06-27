@@ -39,8 +39,20 @@
 :root[data-theme="dark"] .badge.emp-reg{background:#143a30;color:#7fe0c0;border-color:#1f5b48}
 :root[data-theme="dark"] .badge.emp-temp,:root[data-theme="dark"] .badge.emp-intern{background:#1b3346;color:#a7c0d6;border-color:#2c4459}
 :root[data-theme="dark"] .badge.edu{background:#2a2440;color:#c7b3e6;border-color:#3d3357}
+:root[data-theme="dark"] .badge.emp-perm{background:#26331c;color:#cfe0a0;border-color:#3b4a26}
+:root[data-theme="dark"] .badge.dday{background:#3a221f;color:#ff9b86;border-color:#552d28}
+:root[data-theme="dark"] .badge.dday.safe{background:#1b3346;color:#9db2c4;border-color:#2c4459}
 :root[data-theme="dark"] .chip-toggle:has(input:checked){background:#3a2410;color:#ffce9c}
 :root[data-theme="dark"] .card.is-closed .badge.dday{background:#243140;color:#8aa0b1}
+/* 다크: 밝게 남던 요소 보정 */
+:root[data-theme="dark"] .hero-overlay{background:linear-gradient(180deg, rgba(10,25,40,0) 0%, rgba(11,27,42,.45) 70%, var(--bg) 100%)}
+:root[data-theme="dark"] .stat{background:rgba(23,44,62,.82);border-color:var(--line)}
+:root[data-theme="dark"] .controls{background:rgba(13,27,40,.92)}
+:root[data-theme="dark"] .reason{background:#15293b;color:#86c2ea;border-color:#264058}
+:root[data-theme="dark"] .kicker{background:rgba(23,44,62,.7)}
+:root[data-theme="dark"] .search input,:root[data-theme="dark"] select.sort,
+:root[data-theme="dark"] select.mini,:root[data-theme="dark"] .chip-toggle{background:#13283a}
+:root[data-theme="dark"] .hero h1{text-shadow:0 2px 20px rgba(0,0,0,.5)}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{
@@ -152,7 +164,15 @@ main{padding:26px 0 70px}
 select.mini{font-size:13px;border:1px solid var(--line);background:var(--paper);color:var(--ink);
   border-radius:999px;padding:6px 12px;cursor:pointer}
 .chip-clear{font-size:12.5px;color:var(--accent);background:none;border:0;cursor:pointer;font-weight:700;text-decoration:underline}
-.btn.theme{background:var(--paper);border:1px solid var(--line);border-radius:999px;width:40px;justify-content:center;font-size:16px;padding:0}
+/* 우측 상단 플로팅 다크모드 토글 */
+.theme-fab{position:fixed;top:14px;right:16px;z-index:60;width:48px;height:48px;border-radius:50%;
+  border:1px solid var(--line);background:var(--paper);color:var(--ink);font-size:21px;cursor:pointer;
+  box-shadow:var(--shadow-lg);display:flex;align-items:center;justify-content:center;
+  transition:transform .15s ease, background .2s, box-shadow .2s}
+.theme-fab:hover{transform:scale(1.1) rotate(-8deg)}
+.theme-fab:active{transform:scale(.95)}
+:root[data-theme="dark"] .theme-fab{background:#1d3650;border-color:#34536b}
+@media (max-width:560px){.theme-fab{top:10px;right:10px;width:44px;height:44px;font-size:19px}}
 
 .fields{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;font-size:13.3px;margin-bottom:12px}
 .fields dt{color:var(--ink-soft);font-weight:700;white-space:nowrap}
