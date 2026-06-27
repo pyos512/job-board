@@ -2,8 +2,8 @@
    기상·환경·대기·데이터 채용보드 — 하늘색(딥 스카이) 테마 / 반응형
    ============================================================ */
 :root{
-  --bg:#c8e2f4;            /* 살짝 짙은 하늘색 배경 */
-  --bg2:#abd2ec;
+  --bg:#b3d2ec;            /* 살짝 짙은 하늘색 배경 */
+  --bg2:#93c0e2;
   --paper:#ffffff;         /* 카드 */
   --paper2:#eef6fd;
   --ink:#143a52;           /* 본문(딥 네이비) */
@@ -12,6 +12,8 @@
   --accent:#1379bf;        /* 스카이 블루 */
   --accent-2:#159fd0;      /* 시안 */
   --gold:#2b86c6;          /* 하이라이트(블루) */
+  --cta:#f07d1f;           /* 강조·CTA 주황(공고보기·추천) */
+  --cta-deep:#d96a12;      /* 주황 hover */
   --good:#1f8f74;          /* 정규직 등 good(틸그린) */
   --mid:#c08a2a;           /* mid score(앰버) */
   --low:#7e94a3;
@@ -51,7 +53,7 @@ a{color:inherit}
   padding:7px 14px;border-radius:999px;font-size:13px;backdrop-filter:blur(6px)}
 .hero h1{margin:18px 0 10px;font-size:clamp(28px,5vw,46px);line-height:1.18;font-weight:800;
   letter-spacing:-.01em;text-shadow:0 2px 18px rgba(200,226,244,.8)}
-.hero h1 .hl{color:var(--accent-2)}
+.hero h1 .hl{color:var(--cta)}
 .hero p.sub{margin:0;font-size:clamp(15px,2.2vw,18px);color:var(--ink-soft);max-width:640px}
 
 /* stat chips */
@@ -75,7 +77,7 @@ a{color:inherit}
 .tab.active{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:var(--shadow)}
 .tab .cnt{font-size:11.5px;background:rgba(0,0,0,.10);padding:1px 8px;border-radius:999px}
 .tab.active .cnt{background:rgba(255,255,255,.22)}
-.tab.star.active{background:linear-gradient(135deg,var(--gold),var(--accent-2));border-color:transparent}
+.tab.star.active{background:linear-gradient(135deg,#ffb24d,var(--cta));border-color:transparent;color:#fff}
 
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .search{position:relative}
@@ -106,7 +108,7 @@ main{padding:26px 0 70px}
 .card.s-good::before{background:linear-gradient(var(--accent),var(--good))}
 .card.s-mid::before{background:linear-gradient(var(--gold),var(--mid))}
 .card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);border-color:var(--gold)}
-.card.reco{border-color:var(--gold)}
+.card.reco{border-color:var(--cta);box-shadow:0 6px 20px rgba(240,125,31,.14)}
 .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .org{font-weight:800;font-size:15px;color:var(--accent);letter-spacing:-.01em}
 .src{font-size:11px;color:var(--ink-soft);border:1px solid var(--line);border-radius:999px;
@@ -122,7 +124,7 @@ main{padding:26px 0 70px}
 .badge.edu{background:#eee7f3;color:#6a4f86;border-color:#ddcdec}
 .badge.dday{background:#f7e4dd;color:var(--danger);border-color:#eebfb0}
 .badge.dday.safe{background:#e9eff5;color:var(--ink-soft);border-color:var(--line)}
-.badge.reco{background:linear-gradient(135deg,#cfe7fa,#86c2ea);color:#0e3a5c;border-color:#a9d2ee}
+.badge.reco{background:linear-gradient(135deg,#ffd27a,var(--cta));color:#5a2d04;border-color:#f0b878}
 
 .fields{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;font-size:13.3px;margin-bottom:12px}
 .fields dt{color:var(--ink-soft);font-weight:700;white-space:nowrap}
@@ -142,10 +144,10 @@ main{padding:26px 0 70px}
 .scorepill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;
   color:var(--ink-soft)}
 .scorepill .bar{width:54px;height:7px;background:var(--line);border-radius:99px;overflow:hidden}
-.scorepill .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--accent))}
-.apply{background:var(--accent-2);color:#fff;border-radius:999px;padding:8px 16px;font-size:13px;
+.scorepill .bar i{display:block;height:100%;background:linear-gradient(90deg,#ffb24d,var(--cta))}
+.apply{background:var(--cta);color:#fff;border-radius:999px;padding:8px 16px;font-size:13px;
   font-weight:700;text-decoration:none;white-space:nowrap;transition:.15s}
-.apply:hover{background:#0e7ba8;transform:translateY(-1px)}
+.apply:hover{background:var(--cta-deep);transform:translateY(-1px)}
 
 .empty{text-align:center;padding:70px 20px;color:var(--ink-soft)}
 .empty .big{font-size:42px;margin-bottom:10px}
