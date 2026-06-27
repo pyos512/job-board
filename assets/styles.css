@@ -164,15 +164,32 @@ main{padding:26px 0 70px}
 select.mini{font-size:13px;border:1px solid var(--line);background:var(--paper);color:var(--ink);
   border-radius:999px;padding:6px 12px;cursor:pointer}
 .chip-clear{font-size:12.5px;color:var(--accent);background:none;border:0;cursor:pointer;font-weight:700;text-decoration:underline}
-/* 우측 상단 플로팅 다크모드 토글 */
-.theme-fab{position:fixed;top:14px;right:16px;z-index:60;width:48px;height:48px;border-radius:50%;
-  border:1px solid var(--line);background:var(--paper);color:var(--ink);font-size:21px;cursor:pointer;
-  box-shadow:var(--shadow-lg);display:flex;align-items:center;justify-content:center;
+/* 우측 상단 플로팅 다크모드 토글 (아이콘 + 글씨) */
+.theme-fab{position:fixed;top:14px;right:16px;z-index:60;height:42px;padding:0 16px;border-radius:999px;
+  border:1px solid var(--line);background:var(--paper);color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;
+  box-shadow:var(--shadow-lg);display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
   transition:transform .15s ease, background .2s, box-shadow .2s}
-.theme-fab:hover{transform:scale(1.1) rotate(-8deg)}
-.theme-fab:active{transform:scale(.95)}
+.theme-fab:hover{transform:translateY(-1px) scale(1.03)}
+.theme-fab:active{transform:scale(.97)}
 :root[data-theme="dark"] .theme-fab{background:#1d3650;border-color:#34536b}
-@media (max-width:560px){.theme-fab{top:10px;right:10px;width:44px;height:44px;font-size:19px}}
+@media (max-width:560px){.theme-fab{top:10px;right:10px;height:38px;padding:0 13px;font-size:13px}}
+
+/* 맨 위로 */
+.totop-fab{position:fixed;right:18px;bottom:22px;z-index:55;width:46px;height:46px;border-radius:50%;
+  border:1px solid var(--line);background:var(--accent);color:#fff;font-size:20px;font-weight:800;cursor:pointer;
+  box-shadow:var(--shadow-lg);opacity:0;visibility:hidden;transform:translateY(8px);
+  transition:opacity .25s, transform .25s, visibility .25s}
+.totop-fab.show{opacity:1;visibility:visible;transform:none}
+.totop-fab:hover{filter:brightness(1.1)}
+@media (max-width:560px){.totop-fab{right:12px;bottom:14px;width:42px;height:42px}}
+
+/* 제목 링크 / 빈 화면 초기화 */
+.card,.title,.org,.fields dd{overflow-wrap:anywhere;word-break:break-word}
+.title a{color:inherit;text-decoration:none}
+.title a:hover{color:var(--accent);text-decoration:underline}
+.empty-reset{margin-top:16px;background:var(--cta);color:#fff;border:0;border-radius:999px;
+  padding:9px 18px;font-weight:700;font-size:13.5px;cursor:pointer}
+.empty-reset:hover{background:var(--cta-deep)}
 
 .fields{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;font-size:13.3px;margin-bottom:12px}
 .fields dt{color:var(--ink-soft);font-weight:700;white-space:nowrap}

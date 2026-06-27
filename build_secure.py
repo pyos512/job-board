@@ -29,8 +29,7 @@ def gen_password():
 
 
 def fixed_password():
-    """고정 비밀번호: 환경변수 DAILY_KEY > email_config.json 의 site_password.
-    둘 다 없으면 무작위 생성(권장 안 함 — 매번 바뀜)."""
+    """고정 비밀번호: 환경변수 DAILY_KEY > email_config.json 의 site_password. 없으면 None."""
     env = os.environ.get("DAILY_KEY")
     if env:
         return env
@@ -41,9 +40,9 @@ def fixed_password():
                 pw = (json.load(f).get("site_password") or "").strip()
             if pw:
                 return pw
-        except Exception:
-            pass
-    return gen_password()
+        except Exception as e:
+            print(f"[경고] email_config.json 읽기 실패: {e}", file=sys.stderr)
+    return None
 
 
 def main():
@@ -52,6 +51,16 @@ def main():
         sys.exit(1)
 
     password = fixed_password()
+    if not password:
+        # 고정 비번이 없는데 무작위로 암호화하면 아무도 못 여는 상태로 배포됨(락아웃).
+        # → 중단하여 직전 배포(열 수 있는 데이터)를 유지한다. 의도적 무작위는 --allow-random.
+        if "--allow-random" in sys.argv:
+            password = gen_password()
+            print(f"[경고] 고정 비번 없음 → 무작위 사용: {password}", file=sys.stderr)
+        else:
+            print("[오류] site_password(email_config.json)가 없습니다. 무작위 암호화로 인한 "
+                  "락아웃을 막기 위해 중단합니다. (기존 배포 유지)", file=sys.stderr)
+            sys.exit(4)
     with open(SRC, "rb") as f:
         plaintext = f.read()
 

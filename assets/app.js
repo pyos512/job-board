@@ -76,7 +76,12 @@
       el("span", { class: "org", text: job.org || "기관" }),
       el("span", { class: "src", text: job.source || "" })
     ]));
-    c.appendChild(el("h3", { class: "title", text: job.title || "" }));
+    var ttl = job.title || job.field || "(제목 없음)";
+    var titleUrl = safeUrl(job.url);
+    var h3 = el("h3", { class: "title" });
+    if (titleUrl) h3.appendChild(el("a", { href: titleUrl, target: "_blank", rel: "noopener noreferrer nofollow", text: ttl }));
+    else h3.appendChild(document.createTextNode(ttl));
+    c.appendChild(h3);
 
     /* 배지들 */
     var badges = el("div", { class: "badges" });
@@ -105,7 +110,7 @@
     c.appendChild(dl);
 
     /* 추천 사유 */
-    if (job.reasons && job.reasons.length) {
+    if (Array.isArray(job.reasons) && job.reasons.length) {
       var rs = el("div", { class: "reasons" });
       job.reasons.forEach(function (r) { rs.appendChild(el("span", { class: "reason", text: r })); });
       c.appendChild(rs);
@@ -208,15 +213,36 @@
     document.getElementById("resultMeta").textContent =
       "‘" + state.tab + "’ · " + jobs.length + "건" + (state.q ? " · 검색: " + state.q : "");
     if (!jobs.length) {
-      grid.appendChild(el("div", { class: "empty" }, [
+      var filtersOn = state.q || state.fNew || state.fEntry || state.fSalary || state.fEmp || state.fRegion || state.tab !== "전체";
+      var empty = el("div", { class: "empty" }, [
         el("div", { class: "big", text: "🔍" }),
-        el("div", { text: "조건에 맞는 공고가 없습니다." })
-      ]));
+        el("div", { text: filtersOn ? "조건에 맞는 공고가 없습니다." : "표시할 공고가 없습니다. 잠시 후 새로고침 해보세요." })
+      ]);
+      if (filtersOn) {
+        var reset = el("button", { class: "empty-reset", type: "button", text: "필터·검색 초기화" });
+        reset.addEventListener("click", resetAll);
+        empty.appendChild(reset);
+      }
+      grid.appendChild(empty);
       return;
     }
     var frag = document.createDocumentFragment();
-    jobs.forEach(function (j) { frag.appendChild(card(j)); });
+    jobs.forEach(function (j) {
+      try { frag.appendChild(card(j)); }       // 한 카드가 깨져도 나머지는 정상 렌더
+      catch (e) { /* skip malformed job */ }
+    });
     grid.appendChild(frag);
+  }
+
+  /* 상대 시각: "2026-06-27 22:05:00" → " · 3시간 전" */
+  function relTime(s) {
+    if (!s) return "";
+    var t = new Date(String(s).replace(" ", "T"));
+    if (isNaN(t)) return "";
+    var m = Math.floor((Date.now() - t) / 60000);
+    if (m < 0) return "";
+    var txt = m < 1 ? "방금 전" : m < 60 ? m + "분 전" : m < 1440 ? Math.floor(m / 60) + "시간 전" : Math.floor(m / 1440) + "일 전";
+    return " · " + txt;
   }
 
   /* ---------- 헤더 통계 ---------- */
@@ -226,7 +252,7 @@
     document.getElementById("stCompanies").textContent = d.companies || "-";
     document.getElementById("stReco").textContent = d.recommended != null ? d.recommended :
       (d.jobs || []).filter(function (j) { return !j.closed && j.score >= 40; }).length;
-    document.getElementById("updated").textContent = d.updatedAtKr || d.updatedAt || "-";
+    document.getElementById("updated").textContent = (d.updatedAtKr || d.updatedAt || "-") + relTime(d.updatedAt);
   }
 
   /* ---------- 데이터 로드 ---------- */
@@ -319,12 +345,17 @@
     bindChk("fNew", "fNew"); bindChk("fEntry", "fEntry"); bindChk("fSalary", "fSalary");
     bindSel("fEmp", "fEmp"); bindSel("fRegion", "fRegion");
     var clr = document.getElementById("fClear");
-    if (clr) clr.addEventListener("click", function () {
-      state.fNew = state.fEntry = state.fSalary = false; state.fEmp = ""; state.fRegion = "";
-      ["fNew", "fEntry", "fSalary"].forEach(function (id) { var e = document.getElementById(id); if (e) e.checked = false; });
-      ["fEmp", "fRegion"].forEach(function (id) { var e = document.getElementById(id); if (e) e.value = ""; });
-      render();
-    });
+    if (clr) clr.addEventListener("click", resetAll);
+  }
+
+  /* 탭·검색·필터 모두 초기화 */
+  function resetAll() {
+    state.tab = "전체"; state.q = "";
+    state.fNew = state.fEntry = state.fSalary = false; state.fEmp = ""; state.fRegion = "";
+    var sb = document.getElementById("search"); if (sb) sb.value = "";
+    ["fNew", "fEntry", "fSalary"].forEach(function (id) { var e = document.getElementById(id); if (e) e.checked = false; });
+    ["fEmp", "fRegion"].forEach(function (id) { var e = document.getElementById(id); if (e) e.value = ""; });
+    render();
   }
 
   /* ---------- 다크 모드 ---------- */
@@ -333,7 +364,11 @@
     try { saved = localStorage.getItem("jb_theme"); } catch (e) {}
     if (saved === "dark") document.documentElement.setAttribute("data-theme", "dark");
     var btn = document.getElementById("themeBtn");
-    function sync() { if (btn) btn.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀️" : "🌙"; }
+    function sync() {
+      if (!btn) return;
+      var dark = document.documentElement.getAttribute("data-theme") === "dark";
+      btn.textContent = dark ? "☀️ 라이트 모드" : "🌙 다크 모드";
+    }
     sync();
     if (btn) btn.addEventListener("click", function () {
       var dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -344,7 +379,19 @@
     });
   }
 
+  /* ---------- 맨 위로 ---------- */
+  function initToTop() {
+    var fab = document.getElementById("toTop");
+    if (!fab) return;
+    function onScroll() { fab.classList.toggle("show", window.scrollY > 480); }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    fab.addEventListener("click", function () {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    onScroll();
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
-    initTheme(); bindControls(); bindRefresh(); boot();
+    initTheme(); initToTop(); bindControls(); bindRefresh(); boot();
   });
 })();
