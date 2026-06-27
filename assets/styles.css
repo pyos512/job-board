@@ -26,6 +26,21 @@
          "Apple SD Gothic Neo","Malgun Gothic","맑은 고딕","Noto Sans KR",
          "Segoe UI",Roboto,sans-serif;
 }
+/* ===== 다크 모드 ===== */
+:root[data-theme="dark"]{
+  --bg:#0e1f2d; --bg2:#13283a;
+  --paper:#172c3e; --paper2:#1d3146;
+  --ink:#e7eff6; --ink-soft:#9db2c4; --line:#2c4459;
+  --accent:#46a4e0; --accent-2:#39c0d6; --gold:#5aa6dd;
+  --good:#3fb594; --mid:#d2a14a; --low:#8aa0b1; --danger:#ef6a55;
+  --shadow:0 6px 20px rgba(0,0,0,.35); --shadow-lg:0 16px 44px rgba(0,0,0,.5);
+}
+:root[data-theme="dark"] body{background:linear-gradient(180deg,#0c1b28 0%, #102536 55%, #0e1f2d 100%)}
+:root[data-theme="dark"] .badge.emp-reg{background:#143a30;color:#7fe0c0;border-color:#1f5b48}
+:root[data-theme="dark"] .badge.emp-temp,:root[data-theme="dark"] .badge.emp-intern{background:#1b3346;color:#a7c0d6;border-color:#2c4459}
+:root[data-theme="dark"] .badge.edu{background:#2a2440;color:#c7b3e6;border-color:#3d3357}
+:root[data-theme="dark"] .chip-toggle:has(input:checked){background:#3a2410;color:#ffce9c}
+:root[data-theme="dark"] .card.is-closed .badge.dday{background:#243140;color:#8aa0b1}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{
@@ -125,6 +140,19 @@ main{padding:26px 0 70px}
 .badge.dday{background:#f7e4dd;color:var(--danger);border-color:#eebfb0}
 .badge.dday.safe{background:#e9eff5;color:var(--ink-soft);border-color:var(--line)}
 .badge.reco{background:linear-gradient(135deg,#ffd27a,var(--cta));color:#5a2d04;border-color:#f0b878}
+.badge.new{background:linear-gradient(135deg,#ff6a3d,#e23b53);color:#fff;border-color:#e23b53}
+
+/* ===== 필터 바 ===== */
+.filterbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0 2px}
+.filter-label{font-size:12px;font-weight:800;color:var(--ink-soft);margin-right:2px}
+.chip-toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink);
+  background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;user-select:none}
+.chip-toggle input{accent-color:var(--cta);margin:0}
+.chip-toggle:has(input:checked){border-color:var(--cta);background:#fff3e8;color:#9a4a07}
+select.mini{font-size:13px;border:1px solid var(--line);background:var(--paper);color:var(--ink);
+  border-radius:999px;padding:6px 12px;cursor:pointer}
+.chip-clear{font-size:12.5px;color:var(--accent);background:none;border:0;cursor:pointer;font-weight:700;text-decoration:underline}
+.btn.theme{background:var(--paper);border:1px solid var(--line);border-radius:999px;width:40px;justify-content:center;font-size:16px;padding:0}
 
 .fields{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;font-size:13.3px;margin-bottom:12px}
 .fields dt{color:var(--ink-soft);font-weight:700;white-space:nowrap}

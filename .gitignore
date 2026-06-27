@@ -13,6 +13,7 @@ digest_preview.html
 # 평문 데이터는 배포 금지(암호문 jobs.enc.json 만 배포). 워크플로는 -f 로 enc 강제 커밋.
 data/jobs.json
 data/jobs.js
+data/seen.json
 
 # 로컬 검증용 임시 사이트
 _site_test/

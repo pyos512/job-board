@@ -16,7 +16,8 @@
   ];
   var TAB_CLOSED = "🕒 최근 마감";
 
-  var state = { data: null, tab: "전체", q: "", sort: "reco" };
+  var state = { data: null, tab: "전체", q: "", sort: "reco",
+                fNew: false, fEntry: false, fSalary: false, fEmp: "", fRegion: "" };
 
   /* ---------- 안전 DOM 헬퍼 ---------- */
   function el(tag, attrs, kids) {
@@ -79,6 +80,7 @@
 
     /* 배지들 */
     var badges = el("div", { class: "badges" });
+    if (job.isNew && !job.closed) badges.appendChild(el("span", { class: "badge new", text: "🆕 NEW" }));
     if (reco) badges.appendChild(el("span", { class: "badge reco", text: "⭐ 추천" }));
     if (job.emp) badges.appendChild(el("span", { class: "badge " + empClass(job.emp), text: job.emp }));
     if (job.edu) badges.appendChild(el("span", { class: "badge edu", text: "🎓 " + job.edu }));
@@ -153,6 +155,20 @@
         return [j.org, j.title, j.location, j.field, j.elig, j.pref].join(" ").toLowerCase().indexOf(q) >= 0;
       });
     }
+    // 고급 필터
+    if (state.fNew)    jobs = jobs.filter(function (j) { return j.isNew; });
+    if (state.fEntry)  jobs = jobs.filter(function (j) { return /신입/.test(j.career || ""); });
+    if (state.fSalary) jobs = jobs.filter(function (j) { return j.salary && /\d/.test(j.salary); });
+    if (state.fEmp) {
+      jobs = jobs.filter(function (j) {
+        var e = j.emp || "";
+        if (state.fEmp === "reg")    return /정규직|무기계약/.test(e);
+        if (state.fEmp === "temp")   return /계약|기간제|비정규/.test(e) && !/무기계약/.test(e);
+        if (state.fEmp === "intern") return /인턴/.test(e);
+        return true;
+      });
+    }
+    if (state.fRegion) jobs = jobs.filter(function (j) { return (j.location || "").indexOf(state.fRegion) >= 0; });
     jobs.sort(function (a, b) {
       if (state.sort === "deadline") return ddayInfo(a).n - ddayInfo(b).n;
       if (state.sort === "org") return (a.org || "").localeCompare(b.org || "", "ko");
@@ -215,7 +231,7 @@
 
   /* ---------- 데이터 로드 ---------- */
   function applyData(d) {
-    state.data = d; fillStats(); render();
+    state.data = d; fillStats(); fillRegions(); render();
   }
   function loadFresh() {
     // http(s) 환경에서만 fetch 시도 (file:// 은 차단됨)
@@ -267,6 +283,21 @@
     setTimeout(function () { f.classList.remove("show"); }, 2600);
   }
 
+  /* ---------- 근무지 옵션 채우기 ---------- */
+  function fillRegions() {
+    var sel = document.getElementById("fRegion");
+    if (!sel || sel.options.length > 1) return;
+    var counts = {};
+    (state.data.jobs || []).forEach(function (j) {
+      var loc = (j.location || "").trim();
+      var m = loc.match(/(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)/);
+      if (m) counts[m[1]] = (counts[m[1]] || 0) + 1;
+    });
+    Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).forEach(function (r) {
+      sel.appendChild(el("option", { value: r, text: r + " (" + counts[r] + ")" }));
+    });
+  }
+
   /* ---------- 컨트롤 바인딩 ---------- */
   function bindControls() {
     var s = document.getElementById("search");
@@ -277,9 +308,43 @@
     document.getElementById("sort").addEventListener("change", function (e) {
       state.sort = e.target.value; render();
     });
+    function bindChk(id, key) {
+      var el2 = document.getElementById(id);
+      if (el2) el2.addEventListener("change", function () { state[key] = el2.checked; render(); });
+    }
+    function bindSel(id, key) {
+      var el2 = document.getElementById(id);
+      if (el2) el2.addEventListener("change", function () { state[key] = el2.value; render(); });
+    }
+    bindChk("fNew", "fNew"); bindChk("fEntry", "fEntry"); bindChk("fSalary", "fSalary");
+    bindSel("fEmp", "fEmp"); bindSel("fRegion", "fRegion");
+    var clr = document.getElementById("fClear");
+    if (clr) clr.addEventListener("click", function () {
+      state.fNew = state.fEntry = state.fSalary = false; state.fEmp = ""; state.fRegion = "";
+      ["fNew", "fEntry", "fSalary"].forEach(function (id) { var e = document.getElementById(id); if (e) e.checked = false; });
+      ["fEmp", "fRegion"].forEach(function (id) { var e = document.getElementById(id); if (e) e.value = ""; });
+      render();
+    });
+  }
+
+  /* ---------- 다크 모드 ---------- */
+  function initTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem("jb_theme"); } catch (e) {}
+    if (saved === "dark") document.documentElement.setAttribute("data-theme", "dark");
+    var btn = document.getElementById("themeBtn");
+    function sync() { if (btn) btn.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀️" : "🌙"; }
+    sync();
+    if (btn) btn.addEventListener("click", function () {
+      var dark = document.documentElement.getAttribute("data-theme") === "dark";
+      if (dark) document.documentElement.removeAttribute("data-theme");
+      else document.documentElement.setAttribute("data-theme", "dark");
+      try { localStorage.setItem("jb_theme", dark ? "light" : "dark"); } catch (e) {}
+      sync();
+    });
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    bindControls(); bindRefresh(); boot();
+    initTheme(); bindControls(); bindRefresh(); boot();
   });
 })();

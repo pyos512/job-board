@@ -51,7 +51,23 @@
       <button class="btn refresh" id="refreshBtn" type="button">
         <span class="spin"></span>새로고침
       </button>
+      <button class="btn theme" id="themeBtn" type="button" title="다크 모드" aria-label="다크 모드">🌙</button>
     </div>
+  </div>
+  <!-- ===== 필터 바 ===== -->
+  <div class="wrap filterbar" id="filterbar">
+    <span class="filter-label">필터</span>
+    <label class="chip-toggle"><input type="checkbox" id="fNew"> 🆕 새 공고</label>
+    <label class="chip-toggle"><input type="checkbox" id="fEntry"> 신입 지원가능</label>
+    <label class="chip-toggle"><input type="checkbox" id="fSalary"> 연봉 공개</label>
+    <select class="mini" id="fEmp" aria-label="고용형태">
+      <option value="">고용형태 전체</option>
+      <option value="reg">정규·무기계약</option>
+      <option value="temp">계약·기간제</option>
+      <option value="intern">인턴</option>
+    </select>
+    <select class="mini" id="fRegion" aria-label="근무지"><option value="">근무지 전체</option></select>
+    <button class="chip-clear" id="fClear" type="button">초기화</button>
   </div>
 </div>
 

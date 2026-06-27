@@ -9,6 +9,7 @@
 """
 import os, re, json, sys, time, html
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 # 콘솔이 없는(작업 스케줄러/CI) 환경에서도 한글·이모지 출력이 죽지 않도록 UTF-8 강제
 try:
@@ -86,6 +87,7 @@ HARD_EXCLUDE = re.compile(
 # 대학 교수 초빙·임용, 대학원생/연구생 '모집'(=채용 아님)은 제외 — 학사·석사 '채용'만 남김
 ACADEMIC_EXCLUDE = re.compile(
     r"교원|초빙|임용|조교수|부교수|정교수|석좌|교수\s*채용|전임교원|연구교수|산학협력중점교수|강사|"
+    r"박사후|post-?doc|연수생|"
     r"박사\s*후|박사후|포닥|post-?doc|박사급|"                       # 박사후연구원(post-doc) 제외
     r"신입생|대학원생|석사과정|박사과정|석·?박사\s*통합|학·?석사|연구생\s*모집|수료|장학생|"
     r"학년도.{0,8}(신입|모집|임용|초빙|편입)", re.I)
@@ -97,16 +99,19 @@ ECON_SOC_ORG = re.compile(
     r"대외경제|농촌경제|교통연구원|여성정책|행정연구원|법제연구원|통일연구원|국방연구원|해양수산개발원|"
     r"금융연구원|자본시장|보험연구원|무역협회|상공회의소|교육과정평가원|교육개발원|직업능력")
 
-def accept(org, *texts) -> bool:
-    """수집 통과 여부: 위촉·건축 등 하드제외 → 경제인문사회 기관 제외 → 내 분야 매칭."""
+def accept(org, *texts, relax=False) -> bool:
+    """수집 통과 여부: 위촉·건축 등 하드제외 → 경제인문사회 기관 제외 → 내 분야 매칭.
+    relax=True: 기관 자체가 내 분야인 곳(극지연구소 등)은 분야 키워드 검사를 건너뜀(제외규칙은 유지)."""
     blob = " ".join([t for t in ((org,) + texts) if t])
     if HARD_EXCLUDE.search(blob) or ACADEMIC_EXCLUDE.search(blob):
+        return False
+    if NEG.search(blob):
         return False
     if org and ECON_SOC_ORG.search(org):
         return False
     if classify(org or "") == "정부출연(경제인문사회)":
         return False
-    return is_field(org, *texts)
+    return True if relax else is_field(org, *texts)
 
 # ----------------------------------------------------------------------------
 # 공통 유틸
@@ -126,7 +131,25 @@ def to_yymmdd(s: str) -> str:
     y = m.group(1)
     return f"{y[2:] if len(y)==4 else y}.{m.group(2)}.{m.group(3)}"
 
-from datetime import date as _date
+from datetime import date as _date, timedelta as _timedelta
+
+BOARD_MAX_AGE = 35  # 게시판 공고: 게시 후 N일 지나면 마감 추정 → 제외
+
+def board_enddate(dates):
+    """게시판에서 찾은 날짜들(YY.MM.DD 리스트)로 (마감일, 통과여부) 산출.
+    미래 날짜=마감일로 사용. 과거만 있으면 게시일로 보고 너무 오래된 건 제외(마감 추정)."""
+    if not dates:
+        return "", True                      # 날짜 못 찾음 → 통과(마감일 미정)
+    ns = [(days_until(x), x) for x in dates]
+    ns = [(n, x) for (n, x) in ns if n is not None]
+    if not ns:
+        return "", True
+    fut = [x for (n, x) in ns if n >= -1]     # 오늘/미래 → 마감일
+    if fut:
+        return max(fut), True
+    recent = max(n for (n, x) in ns)          # 과거만: 가장 최근(=가장 큰 음수)
+    return "", (recent >= -BOARD_MAX_AGE)     # 너무 오래되면 제외
+
 def days_until(end: str):
     """'26.07.03' → 마감까지 남은 일수(음수=지남). 파싱 불가면 None."""
     m = re.search(r"(\d{2})\.(\d{2})\.(\d{2})", end or "")
@@ -213,6 +236,62 @@ ALIO_PREHINT = re.compile(
     r"데이터|통계|인공지능|AI|빅데이터|측정|모니터링|관측|분석|원격탐사|위성|"
     r"연구|연구원|연구직|연구소|과학|기술원|진흥원|에너지|기상청|환경공단|환경과학|생태원|극지")
 
+def _alio_detail(rr, closed):
+    """잡알리오 상세 1건 조회·파싱 → job dict 또는 None(필터 탈락). 병렬 호출용."""
+    durl = f"https://job.alio.go.kr/recruitview.do?idx={rr['idx']}"
+    sal = pref = edu = field = career = period = head = elig = ""
+    try:
+        d = requests.get(durl, headers=UA, timeout=TIMEOUT); d.encoding = "utf-8"
+        ds = BeautifulSoup(d.text, "html.parser")
+        for br in ds.find_all("br"):
+            br.replace_with("\n")
+        for th in ds.find_all("th"):
+            td = th.find_next_sibling("td")
+            if not td:
+                continue
+            k, v = clean(th.get_text()), clean(td.get_text())
+            if   k == "급여정보": sal = v
+            elif k == "우대조건": pref = v
+            elif k == "채용기간": period = v
+            elif k == "학력정보": edu = v
+            elif k == "근무분야": field = v
+            elif k == "채용구분": career = v
+            elif k == "채용인원": head = v
+        if not re.search(r"\d", sal):
+            sal = ""
+        head_tag = None
+        for tag in ds.find_all(["h3", "h4", "h5", "strong", "b"]):
+            if tag.get_text(strip=True).startswith("응시자격"):
+                head_tag = tag; break
+        if head_tag:
+            parts = []
+            for sib in head_tag.next_elements:
+                nm = getattr(sib, "name", None)
+                if nm in ("h3", "h4", "h5") and sib is not head_tag:
+                    break
+                if isinstance(sib, str):
+                    parts.append(sib)
+                if sum(len(p) for p in parts) > 1600:
+                    break
+            elig = fmt_qualifications("".join(parts))
+    except Exception:
+        return None
+    if "박사" in edu and not ("석사" in edu or "학사" in edu):     # 박사 전용 제외
+        return None
+    if not accept(rr["org"], rr["title"], field, edu, elig, pref, rr["emp"]):
+        return None
+    if not period:
+        period = f"{rr['reg']} ~ {rr['end']}"
+    jtype = classify(rr["org"])
+    sci_strong = len(set(FIELD_KO.findall(" ".join([rr["title"], field, elig])))) >= 3
+    sc, rs = score(rr["emp"], sal, pref, career, jtype, sci_strong)
+    title = rr["title"] or (f"{field} 분야 채용" if field else f"{rr['org']} 채용")
+    return dict(source="잡알리오", type=jtype, org=rr["org"], title=title,
+                location=rr["loc"], emp=rr["emp"], period=period, endDate=rr["end"],
+                dday="", salary=sal, edu=edu, field=field, career=career, headcount=head,
+                elig=elig, pref=pref, score=sc, reasons=rs, url=durl, closed=closed)
+
+
 def get_alio(closed=False, window=5):
     # closed=False: 진행중(ing=2). closed=True: 최근 마감(ing=3) 중 window일 이내 지난 것만.
     ing = "3" if closed else "2"
@@ -240,74 +319,27 @@ def get_alio(closed=False, window=5):
                          reg=clean(tds[6].get_text()), end=end))
     print(f"[잡알리오] 목록 {len(rows)}건 → 상세 수집...")
 
-    jobs = []
-    per_company = {}
+    # 상세조회 후보 선별(힌트·기관상한·마감창)
+    candidates, per_company = [], {}
     MAX_PER_COMPANY = 4
-    for i, rr in enumerate(rows, 1):
-        if per_company.get(rr["org"], 0) >= MAX_PER_COMPANY:   # 한 기관 과다 노출 방지
+    for rr in rows:
+        if per_company.get(rr["org"], 0) >= MAX_PER_COMPANY:
             continue
-        if not ALIO_PREHINT.search(rr["title"] + " " + rr["org"]):  # 분야/연구 힌트 없으면 상세 생략
+        if not ALIO_PREHINT.search(rr["title"] + " " + rr["org"]):
             continue
-        if closed:                                             # 마감 모드: 최근 window일 이내 지난 것만
+        if closed:
             dn = days_until(rr["end"])
             if dn is None or dn > 0 or dn < -window:
                 continue
-        durl = f"https://job.alio.go.kr/recruitview.do?idx={rr['idx']}"
-        sal = pref = edu = field = career = period = head = elig = ""
-        try:
-            d = requests.get(durl, headers=UA, timeout=TIMEOUT); d.encoding = "utf-8"
-            ds = BeautifulSoup(d.text, "html.parser")
-            for br in ds.find_all("br"):
-                br.replace_with("\n")
-            for th in ds.find_all("th"):
-                td = th.find_next_sibling("td")
-                if not td:
-                    continue
-                k, v = clean(th.get_text()), clean(td.get_text())
-                if   k == "급여정보": sal = v
-                elif k == "우대조건": pref = v
-                elif k == "채용기간": period = v
-                elif k == "학력정보": edu = v
-                elif k == "근무분야": field = v
-                elif k == "채용구분": career = v
-                elif k == "채용인원": head = v
-            if not re.search(r"\d", sal):
-                sal = ""
-            # 응시자격 섹션
-            head_tag = None
-            for tag in ds.find_all(["h3", "h4", "h5", "strong", "b"]):
-                if tag.get_text(strip=True).startswith("응시자격"):
-                    head_tag = tag; break
-            if head_tag:
-                parts = []
-                for sib in head_tag.next_elements:
-                    nm = getattr(sib, "name", None)
-                    if nm in ("h3", "h4", "h5") and sib is not head_tag:
-                        break
-                    if isinstance(sib, str):
-                        parts.append(sib)
-                    if sum(len(p) for p in parts) > 1600:
-                        break
-                elig = fmt_qualifications("".join(parts))
-        except Exception as ex:
-            print(f"   (상세 실패 {rr['org']}: {ex})")
-
-        if "박사" in edu and not ("석사" in edu or "학사" in edu):   # 박사 전용 제외(학사·석사는 유지)
-            continue
-        if not accept(rr["org"], rr["title"], field, edu, elig, pref, rr["emp"]):  # 분야+위촉·건축·경제인문사회 제외
-            continue
-        if not period:
-            period = f"{rr['reg']} ~ {rr['end']}"
-        jtype = classify(rr["org"])
-        sci_strong = len(set(FIELD_KO.findall(" ".join([rr["title"], field, elig])))) >= 3
-        sc, rs = score(rr["emp"], sal, pref, career, jtype, sci_strong)
-        jobs.append(dict(source="잡알리오", type=jtype, org=rr["org"], title=rr["title"],
-                         location=rr["loc"], emp=rr["emp"], period=period, endDate=rr["end"],
-                         dday="", salary=sal, edu=edu, field=field, career=career, headcount=head,
-                         elig=elig, pref=pref, score=sc, reasons=rs, url=durl, closed=closed))
         per_company[rr["org"]] = per_company.get(rr["org"], 0) + 1
-        if closed and len(jobs) >= 25:
+        candidates.append(rr)
+        if closed and len(candidates) >= 40:
             break
+    # [20] 상세 병렬 조회 (순차 → 동시 8개)
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        jobs = [j for j in ex.map(lambda rr: _alio_detail(rr, closed), candidates) if j]
+    if closed:
+        jobs = jobs[:25]
     print(f"[잡알리오{'-마감' if closed else ''}] 확정 {len(jobs)}건")
     return jobs
 
@@ -348,12 +380,20 @@ def get_hibrain_cat(url, label, cap=24):
         if not accept(org if org != "하이브레인넷 공고" else "", title):  # 분야+위촉·건축·경제인문사회 제외
             continue
         dd = re.search(r"(D-\d+|오늘마감|상시채용|상시)", block)
+        dday = dd.group(1) if dd else ""
+        # D-N → 실제 마감일 환산(상세요청 없이) → 정렬·최근마감 탭에 반영
+        end = ""
+        dm = re.search(r"D-(\d+)", dday)
+        if dm:
+            end = (_date.today() + _timedelta(days=int(dm.group(1)))).strftime("%y.%m.%d")
+        elif "오늘마감" in dday:
+            end = _date.today().strftime("%y.%m.%d")
         jtype = classify(org if org != "하이브레인넷 공고" else title)
         if jtype == "공공기관·공기업":
             jtype = "하이브레인넷(연구실·기업)"
         sc, rs = score("연구직", "", "", "", jtype)
         out.append(dict(source="하이브레인넷", type=jtype, org=org, title=title,
-                        location="", emp="연구직", period="", endDate="", dday=(dd.group(1) if dd else ""),
+                        location="", emp="연구직", period="", endDate=end, dday=dday,
                         salary="", edu="학사·석사", field="연구", career="", headcount="",
                         elig="", pref="", score=sc + 12, reasons=rs + ["연구전문 채용"], url=href))
         if len(out) >= cap:
@@ -469,12 +509,26 @@ def get_kunsolution_board(base, bbs_id, source, default_org, cap=15):
         if not accept(org, title):           # 분야 + 위촉·건축·박사후·교수 등 제외
             continue
         full = _uparse.urljoin(url, href)
+        # 상세 보강: 마감일·자격 텍스트 (best-effort)
+        end, elig = "", ""
+        try:
+            dr = requests.get(full, headers=UA, timeout=15, verify=False)
+            dr.encoding = dr.apparent_encoding or "utf-8"
+            body = clean(BeautifulSoup(dr.text, "html.parser").get_text(" "))
+            dates = [to_yymmdd(f"{y}.{int(mo):02d}.{int(d):02d}") for (y, mo, d) in
+                     re.findall(r"(20\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})", body)]
+            fut = [x for x in dates if (days_until(x) or -99) >= 0]
+            end = max(fut) if fut else ""               # 미래 날짜만 마감일로(게시일 오인 방지)
+            em = re.search(r"(자격|지원자격|모집분야|담당업무)[\s:]*(.{10,300})", body)
+            elig = clean(em.group(2)) if em else ""
+        except Exception:
+            pass
         jtype = classify(org)
         sc, rs = score("", "", "", "", jtype)
         out.append(dict(source=source, type=jtype, org=org, title=title,
-                        location="", emp="", period="", endDate="", dday="",
+                        location="", emp="", period="", endDate=end, dday="",
                         salary="", edu="학사·석사", field="", career="", headcount="",
-                        elig="", pref="", score=sc + 6, reasons=rs + ["학회 채용게시판"], url=full))
+                        elig=elig, pref="", score=sc + 6, reasons=rs + ["학회 채용게시판"], url=full))
         if len(out) >= cap:
             break
     return out
@@ -525,12 +579,10 @@ def get_egov_board(list_url, source, default_org, cap=12):
         if not accept(org, title):
             continue
         tds = [clean(td.get_text(" ")) for td in tr.find_all("td")]
-        # 마감일 추정: 미래 날짜 셀
-        end = ""
-        for c in tds:
-            mm = re.search(r"(20\d{2})[-.](\d{2})[-.](\d{2})", c)
-            if mm:
-                end = to_yymmdd(mm.group(0))           # 가장 마지막(=마감일일 확률) 우선
+        dates = [to_yymmdd(m.group(0)) for c in tds for m in [re.search(r"20\d{2}[-.]\d{2}[-.]\d{2}", c)] if m]
+        end, keep = board_enddate(dates)              # 미래=마감일, 오래된 게시일은 제외
+        if not keep:
+            continue
         href = a.get("href", "")
         full = _uparse.urljoin(list_url, href)
         jtype = classify(org)
@@ -553,6 +605,44 @@ def get_gov_boards():
     res += get_egov_board("https://www.forest.go.kr/kfsweb/cop/bbs/selectBoardList.do?bbsId=BBSMSTR_1034&mn=NKFS_04_01_03",
                           "산림청", "산림청")
     return res
+
+def get_kopri():
+    # 극지연구소 — 기관 자체가 극지/대기/해양 분야라 분야검사 완화(relax). 노무·박사후·연수생은 제외.
+    print("[극지연구소] 수집...")
+    out = []
+    url = "https://www.kopri.re.kr/kopri/html/comm/040302.html"
+    try:
+        r = GET(url, headers=UA, verify=False); r.encoding = r.apparent_encoding or "utf-8"
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as ex:
+        print(f"[극지연구소] 실패: {ex}"); return out
+    for tr in soup.select("table tbody tr"):
+        a = tr.find("a", href=True)
+        if not a:
+            continue
+        title = clean(a.get_text())
+        tds = [clean(td.get_text(" ")) for td in tr.find_all("td")]
+        if len(title) < 5 or not re.search(r"채용|모집|공고", title):
+            continue
+        if not accept("극지연구소", title, relax=True):    # 노무·박사후·연수생·위촉 제외
+            continue
+        dates = [to_yymmdd(m.group(0)) for c in tds for m in [re.search(r"20\d{2}[-.]\d{2}[-.]\d{2}", c)] if m]
+        end, keep = board_enddate(dates)        # 게시 25일 지난 건 마감 추정 제외
+        if not keep:
+            continue
+        href = a.get("href", "")
+        full = _uparse.urljoin(url, href)
+        emp = ("정규직" if "정규직" in title else "기간제" if re.search(r"기간제|계약직", title)
+               else "인턴" if "인턴" in title else "")
+        sc, rs = score(emp, "", "", "", "정부출연(과학기술)")
+        out.append(dict(source="극지연구소", type="정부출연(과학기술)", org="극지연구소", title=title,
+                        location="인천 연수구", emp=emp, period="", endDate=end, dday="",
+                        salary="", edu="학사·석사", field="극지과학", career="", headcount="",
+                        elig="", pref="", score=sc + 6, reasons=rs + ["극지/대기/해양 연구"], url=full))
+        if len(out) >= 10:
+            break
+    print(f"[극지연구소] {len(out)}건")
+    return out
 
 # ----------------------------------------------------------------------------
 # 4) 워크넷 (공공데이터포털 공식 API, 선택) — 환경변수 WORKNET_KEY 필요
@@ -638,17 +728,22 @@ def _safe(fn, name):
 CLOSED_WINDOW = 5  # 최근 마감(지난) 공고 표시 기간(일)
 
 def main():
-    allj = []
-    allj += _safe(get_alio, "잡알리오")                       # 진행중
-    allj += _safe(lambda: get_alio(closed=True, window=CLOSED_WINDOW), "잡알리오-마감")  # 최근 마감
-    allj += _safe(get_hibrain, "하이브레인넷")
-    allj += _safe(get_kma, "기상청")
-    allj += _safe(get_societies, "학회")
-    allj += _safe(get_gov_boards, "정부게시판")
-    allj += _safe(get_worknet, "워크넷")
-    allj += _safe(get_narailteo, "나라일터")
+    SOURCES = [
+        (get_alio, "잡알리오"),
+        (lambda: get_alio(closed=True, window=CLOSED_WINDOW), "잡알리오-마감"),
+        (get_hibrain, "하이브레인넷"),
+        (get_kma, "기상청"),
+        (get_societies, "학회"),
+        (get_gov_boards, "정부게시판"),
+        (get_kopri, "극지연구소"),
+        (get_worknet, "워크넷"),
+        (get_narailteo, "나라일터"),
+    ]
+    # [20] 소스 동시 수집(병렬) — 9개 소스를 한꺼번에 → 속도 대폭 단축
+    with ThreadPoolExecutor(max_workers=len(SOURCES)) as ex:
+        results = list(ex.map(lambda p: _safe(p[0], p[1]), SOURCES))
+    allj = [j for r in results for j in r]
 
-    # 모든 소스가 실패해 0건이면 기존 데이터를 덮어쓰지 않고 실패 종료
     if not allj:
         print("\n⚠️ 수집 0건 — 모든 소스 실패로 판단. 기존 데이터를 유지하고 종료합니다.")
         sys.exit(1)
@@ -659,17 +754,26 @@ def main():
         dn = days_until(j.get("endDate", ""))
         if dn is not None and dn < 0:
             if dn < -CLOSED_WINDOW:
-                continue                          # 너무 오래 지난 공고 제외
+                continue
             j["closed"] = True
         else:
             j["closed"] = j.get("closed", False)
         kept.append(j)
     allj = kept
 
-    # 정렬: 진행중 우선 → 점수↓ → 마감 가까운 순
-    allj.sort(key=lambda j: (j["closed"], -j["score"], j["endDate"] or "9"))
+    # [5] 교차 소스 중복 제거 — 정규화한 (기관+제목)이 같으면 점수 높은 것만 남김
+    def _norm(s):
+        return re.sub(r"[\s\[\]()·\-_,/.]+", "", (s or "")).lower()
+    dseen, dedup = set(), []
+    for j in sorted(allj, key=lambda x: -x["score"]):
+        key = (j["closed"], _norm(j["org"])[:8] + _norm(j["title"])[:22])
+        if key in dseen:
+            continue
+        dseen.add(key); dedup.append(j)
+    allj = dedup
 
-    # 기관당 상한(진행중/마감 각각 최대 4건)
+    # 정렬 + 기관당 상한(진행중/마감 각각 최대 4건)
+    allj.sort(key=lambda j: (j["closed"], -j["score"], j["endDate"] or "9"))
     capped, cnt = [], {}
     for j in allj:
         key = (j["org"], j["closed"])
@@ -679,6 +783,26 @@ def main():
         capped.append(j)
     allj = capped
 
+    # [9] 새 공고 추적 — 지난 실행(seen.json) 대비 처음 보는 공고에 isNew 표시
+    seen_path = os.path.join(DATA, "seen.json")
+    try:
+        prev = json.load(open(seen_path, encoding="utf-8")) if os.path.exists(seen_path) else {}
+    except Exception:
+        prev = {}
+    today_iso = _date.today().isoformat()
+    cur, new_n = {}, 0
+    first_run = not prev
+    for j in allj:
+        uid = j.get("url") or (j["org"] + j["title"])
+        j["isNew"] = (not first_run) and (uid not in prev)   # 첫 실행은 전부 new 처리 안 함
+        if j["isNew"] and not j["closed"]:
+            new_n += 1
+        cur[uid] = prev.get(uid, today_iso)
+    try:
+        json.dump(cur, open(seen_path, "w", encoding="utf-8"), ensure_ascii=False)
+    except Exception:
+        pass
+
     placeholders = {"하이브레인넷 공고", "지자체(나라일터)", "워크넷 공고"}
     active = [j for j in allj if not j["closed"]]
     closed_n = sum(1 for j in allj if j["closed"])
@@ -687,9 +811,10 @@ def main():
     payload = dict(
         updatedAt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         updatedAtKr=datetime.now().strftime("%Y년 %m월 %d일 %H:%M"),
-        count=len(active), closedCount=closed_n, companies=companies, recommended=reco,
+        count=len(active), closedCount=closed_n, newCount=new_n, companies=companies, recommended=reco,
         target="학사·석사 · 기상/대기/환경/농림·해양기상/데이터·AI/환경컨설팅/대기측정",
-        sources=["잡알리오", "하이브레인넷", "기상청", "대기환경학회", "기상학회", "수도권대기환경청", "산림청", "워크넷(API)", "나라일터"],
+        sources=["잡알리오", "하이브레인넷", "기상청", "대기환경학회", "기상학회",
+                 "수도권대기환경청", "산림청", "극지연구소", "워크넷(API)", "나라일터"],
         jobs=allj,
     )
     js = json.dumps(payload, ensure_ascii=False, indent=2)
@@ -697,7 +822,7 @@ def main():
         f.write(js)
     with open(os.path.join(DATA, "jobs.js"), "w", encoding="utf-8") as f:
         f.write("/* 자동생성 — 직접 수정 금지. scrape.py 가 갱신합니다. */\nwindow.__JOBS__ = " + js + ";")
-    print(f"\n완료 ✅  진행중 {len(active)}건 / 최근마감 {closed_n}건 / 기관 {companies}개사 / ⭐추천 {reco}건")
+    print(f"\n완료 ✅  진행중 {len(active)}건 / 최근마감 {closed_n}건 / 🆕새공고 {new_n}건 / 기관 {companies}개사 / ⭐추천 {reco}건")
     print(f"갱신: {payload['updatedAtKr']}")
 
 
