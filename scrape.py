@@ -533,6 +533,42 @@ def get_kunsolution_board(base, bbs_id, source, default_org, cap=15):
             break
     return out
 
+def get_kosenv(cap=18):
+    # 대한환경공학회 구인·구직 게시판 — 환경 분야 채용을 여러 기관에서 모아둠
+    print("[환경공학회] 수집...")
+    out, seen = [], set()
+    url = "https://www.kosenv.or.kr/board/offer"
+    try:
+        r = requests.get(url, headers=UA, timeout=20, verify=False)
+        r.encoding = r.apparent_encoding or "utf-8"
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as ex:
+        print(f"[환경공학회] 실패: {ex}"); return out
+    for a in soup.select("a[href*='/board/offer/view/']"):
+        raw = clean(a.get_text())
+        m = re.search(r"/view/(\d+)", a.get("href", ""))
+        if not m or m.group(1) in seen or len(raw) < 5:
+            continue
+        if not re.search(r"채용|모집|공고|선발|초빙", raw):
+            continue
+        seen.add(m.group(1))
+        om = re.match(r"\s*\[([^\]]{2,30})\]", raw)
+        org = clean(om.group(1)) if om else "환경공학회"
+        title = re.sub(r"^\s*\[[^\]]+\]\s*", "", raw)            # [기관] 접두 제거
+        if not accept(org, title):                              # 분야+교원·위촉 등 제외
+            continue
+        full = _uparse.urljoin(url, a.get("href"))
+        jtype = classify(org)
+        sc, rs = score("", "", "", "", jtype)
+        out.append(dict(source="환경공학회", type=jtype, org=org, title=title,
+                        location="", emp="", period="", endDate="", dday="",
+                        salary="", edu="학사·석사", field="", career="", headcount="",
+                        elig="", pref="", score=sc + 5, reasons=rs + ["환경공학회 구인"], url=full))
+        if len(out) >= cap:
+            break
+    print(f"[환경공학회] {len(out)}건")
+    return out
+
 def get_societies():
     print("[학회] 수집...")
     res = []
@@ -605,6 +641,43 @@ def get_gov_boards():
     res += get_egov_board("https://www.forest.go.kr/kfsweb/cop/bbs/selectBoardList.do?bbsId=BBSMSTR_1034&mn=NKFS_04_01_03",
                           "산림청", "산림청")
     return res
+
+def get_nier():
+    # 국립환경과학원 — 환경 분야라 relax. 박사후·합격자·결과 글 제외. (목록은 서버렌더, 상세는 nttNo로 구성)
+    print("[환경과학원] 수집...")
+    out = []
+    base = "https://www.nier.go.kr/common/kor/board/comBbsList.do?menuNo=14005&bbsNo=24"
+    try:
+        r = GET(base, headers=UA, verify=False); r.encoding = r.apparent_encoding or "utf-8"
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as ex:
+        print(f"[환경과학원] 실패: {ex}"); return out
+    seen = set()
+    for a in soup.select("a[onclick*='fnMoveDetail']"):
+        title = clean(a.get_text())
+        nn = re.search(r"fnMoveDetail\(\s*['\"](\d+)", a.get("onclick", ""))
+        if not nn or nn.group(1) in seen or len(title) < 6:
+            continue
+        if not re.search(r"채용|모집", title) or NOTICE_SKIP.search(title):
+            continue
+        if not accept("국립환경과학원", title, relax=True):       # 박사후·위촉·노무 제외
+            continue
+        seen.add(nn.group(1))
+        tr = a.find_parent("tr")
+        dates = re.findall(r"20\d{2}[-.]\d{2}[-.]\d{2}", tr.get_text(" ")) if tr else []
+        end, keep = board_enddate([to_yymmdd(x) for x in dates])
+        if not keep:
+            continue
+        durl = f"https://www.nier.go.kr/common/kor/board/comBbsView.do?menuNo=14005&bbsNo=24&nttNo={nn.group(1)}"
+        sc, rs = score("", "", "", "", "정부출연(과학기술)")
+        out.append(dict(source="환경과학원", type="정부출연(과학기술)", org="국립환경과학원", title=title,
+                        location="인천 서구", emp="", period="", endDate=end, dday="",
+                        salary="", edu="학사·석사", field="환경", career="", headcount="",
+                        elig="", pref="", score=sc + 6, reasons=rs + ["환경 국가연구기관"], url=durl))
+        if len(out) >= 8:
+            break
+    print(f"[환경과학원] {len(out)}건")
+    return out
 
 def get_kopri():
     # 극지연구소 — 기관 자체가 극지/대기/해양 분야라 분야검사 완화(relax). 노무·박사후·연수생은 제외.
@@ -734,8 +807,10 @@ def main():
         (get_hibrain, "하이브레인넷"),
         (get_kma, "기상청"),
         (get_societies, "학회"),
+        (get_kosenv, "환경공학회"),
         (get_gov_boards, "정부게시판"),
         (get_kopri, "극지연구소"),
+        (get_nier, "환경과학원"),
         (get_worknet, "워크넷"),
         (get_narailteo, "나라일터"),
     ]
@@ -813,8 +888,8 @@ def main():
         updatedAtKr=datetime.now().strftime("%Y년 %m월 %d일 %H:%M"),
         count=len(active), closedCount=closed_n, newCount=new_n, companies=companies, recommended=reco,
         target="학사·석사 · 기상/대기/환경/농림·해양기상/데이터·AI/환경컨설팅/대기측정",
-        sources=["잡알리오", "하이브레인넷", "기상청", "대기환경학회", "기상학회",
-                 "수도권대기환경청", "산림청", "극지연구소", "워크넷(API)", "나라일터"],
+        sources=["잡알리오", "하이브레인넷", "기상청", "대기환경학회", "기상학회", "환경공학회",
+                 "수도권대기환경청", "산림청", "극지연구소", "환경과학원", "워크넷(API)", "나라일터"],
         jobs=allj,
     )
     js = json.dumps(payload, ensure_ascii=False, indent=2)
